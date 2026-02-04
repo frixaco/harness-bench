@@ -4,11 +4,12 @@
   "type": "module",
   "scripts": {
     "ui": "bun --bun vite dev --port 3000",
-    "pty": "bun run pty-server.ts",
+    "pty": "bun run core/server.ts",
     "dev": "bun run pty & bun run ui",
     "build": "bun --bun vite build",
     "preview": "bun --bun vite preview",
     "test": "bun --bun vitest run",
+    "start": "bun run .output/server/index.mjs",
     "lint": "eslint",
     "format": "prettier",
     "check": "prettier --write . && eslint --fix"

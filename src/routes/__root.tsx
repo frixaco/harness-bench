@@ -3,6 +3,17 @@ import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 
 import appCss from '../styles.css?url'
+import { ThemeProvider } from '../components/theme-provider'
+
+const themeScript = `
+  (function() {
+    const theme = localStorage.getItem('theme') || 'dark'
+    const resolved = theme === 'system'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : theme
+    document.documentElement.classList.add(resolved)
+  })()
+`
 
 export const Route = createRootRoute({
   head: () => ({
@@ -15,7 +26,7 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'TanStack Start Starter',
+        title: 'harness-bench',
       },
     ],
     links: [
@@ -24,19 +35,25 @@ export const Route = createRootRoute({
         href: appCss,
       },
     ],
+    scripts: [
+      {
+        children: themeScript,
+      },
+    ],
   }),
 
   shellComponent: RootDocument,
+  notFoundComponent: () => <div>Not found</div>,
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
       <body>
-        {children}
+        <ThemeProvider defaultTheme="dark">{children}</ThemeProvider>
         <TanStackDevtools
           config={{
             position: 'bottom-right',
