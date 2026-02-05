@@ -1,9 +1,16 @@
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
+import {
+  HeadContent,
+  Outlet,
+  Scripts,
+  createRootRoute,
+} from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 
 import appCss from '../styles.css?url'
 import { ThemeProvider } from '../components/theme-provider'
+
+import { WebSocketProvider } from '@/lib/websocket'
 
 const themeScript = `
   (function() {
@@ -42,11 +49,20 @@ export const Route = createRootRoute({
     ],
   }),
 
-  shellComponent: RootDocument,
+  component: RootComponent,
+  shellComponent: RootShell,
   notFoundComponent: () => <div>Not found</div>,
 })
 
-function RootDocument({ children }: { children: React.ReactNode }) {
+function RootComponent() {
+  return (
+    <WebSocketProvider>
+      <Outlet />
+    </WebSocketProvider>
+  )
+}
+
+function RootShell({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>

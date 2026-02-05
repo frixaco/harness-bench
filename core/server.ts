@@ -1,34 +1,54 @@
+const procs = new Map()
+
+const agents = ['amp', 'droid', 'pi', 'codex', 'claude', 'opencode']
+
 Bun.serve({
+  port: 4000,
   fetch(req, server) {
-    // upgrade the request to a WebSocket
-    if (server.upgrade(req)) {
-      return // do not return a Response
+    const url = new URL(req.url)
+    if (url.pathname == '/vt' && req.headers.get('upgrade') === 'websocket') {
+      if (server.upgrade(req)) return
+      return new Response('Upgrade failed', { status: 400 })
     }
-    return new Response('Upgrade failed', { status: 500 })
   },
   websocket: {
     async message(ws, message) {
-      let proc = Bun.spawn(['bun', '--version'], {
-        cwd: './path/to/subdir', // specify a working directory
-        env: { ...process.env, FOO: 'bar' }, // specify environment variables
-        onExit(proc, exitCode, signalCode, error) {
-          // exit handler
-        },
-      })
+      console.log(message)
 
-      proc.pid // process ID of subprocess
+      if (typeof message === 'string' && agents.includes(message)) {
+        let agent = message
+        let proc = Bun.spawn([agent], {
+          cwd: process.env.HOME,
+          env: { ...process.env },
+          onExit(proc, exitCode, signalCode, error) {
+            // exit handler
+          },
+          terminal: {
+            cols: 80,
+            rows: 24,
+            data(terminal, data) {
+              ws.send(data)
+            },
+          },
+        })
+        procs.set(agent, proc)
+      } else if (typeof message === 'string') {
+        const [agent, input] = message.split(':')
+        procs.get(agent)?.terminal.write(input)
+      }
+    },
+    open(ws) {
+      console.log('opening')
+    },
+    close(ws, code, message) {
+      console.log('closing')
 
-      proc = Bun.spawn(['cat'], {
-        stdin: await fetch(
-          'https://raw.githubusercontent.com/oven-sh/bun/main/examples/hashing.js',
-        ),
-      })
-
-      const text = await proc.stdout.text()
-      console.log(text) // "const input = "hello world".repeat(400); ..."
-    }, // a message is received
-    open(ws) {}, // a socket is opened
-    close(ws, code, message) {}, // a socket is closed
-    drain(ws) {}, // the socket is ready to receive more data
-  }, // handlers
+      for (const [_key, value] of procs) {
+        value.terminal.close()
+      }
+    },
+    drain(ws) {
+      console.log('draining')
+    },
+  },
 })
