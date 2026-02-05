@@ -1,4 +1,4 @@
-const procs = new Map()
+const procs = new Map<string, Bun.Subprocess>()
 
 const agents = ['amp', 'droid', 'pi', 'codex', 'claude', 'opencode']
 
@@ -34,7 +34,7 @@ Bun.serve({
         procs.set(agent, proc)
       } else if (typeof message === 'string') {
         const [agent, input] = message.split(':')
-        procs.get(agent)?.terminal.write(input)
+        procs.get(agent)?.terminal?.write(input)
       }
     },
     open(ws) {
@@ -43,8 +43,8 @@ Bun.serve({
     close(ws, code, message) {
       console.log('closing')
 
-      for (const [_key, value] of procs) {
-        value.terminal.close()
+      for (const [_agent, proc] of procs) {
+        proc.terminal?.close()
       }
     },
     drain(ws) {

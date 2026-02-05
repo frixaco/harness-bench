@@ -88,8 +88,24 @@ function Amp({ runRequested }: { runRequested: boolean }) {
       const term = new Terminal({
         fontSize: 14,
         theme: {
-          background: '#0b0f14',
-          foreground: '#e5e7eb',
+          background: '#16181a',
+          foreground: '#ffffff',
+          black: '#16181a',
+          red: '#ff6e5e',
+          green: '#5eff6c',
+          yellow: '#f1ff5e',
+          blue: '#5ea1ff',
+          magenta: '#ff5ef1',
+          cyan: '#5ef1ff',
+          white: '#ffffff',
+          brightBlack: '#3c4048',
+          brightRed: '#ffbd5e',
+          brightGreen: '#5eff6c',
+          brightYellow: '#f1ff5e',
+          brightBlue: '#5ea1ff',
+          brightMagenta: '#ff5ea0',
+          brightCyan: '#5ef1ff',
+          brightWhite: '#ffffff',
         },
       })
       term.open(host)
@@ -115,7 +131,7 @@ function Amp({ runRequested }: { runRequested: boolean }) {
   }, [runRequested, ws.conn])
 
   return (
-    <div className="h-105 rounded-md border border-white/10 bg-black">
+    <div className="h-105 rounded-md bg-background">
       <div ref={termDivContainer} className="h-full w-full" />
     </div>
   )
