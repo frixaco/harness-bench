@@ -1,6 +1,8 @@
+import agentModeMapping from './models.json'
+
 const procs = new Map<string, Bun.Subprocess>()
 
-const agents = ['amp', 'droid', 'pi', 'codex', 'claude', 'opencode']
+const agents = Object.keys(agentModeMapping)
 
 Bun.serve({
   port: 4000,

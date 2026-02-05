@@ -1,46 +1,105 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { Terminal, init } from 'ghostty-web'
+import { FitAddon, Terminal, init } from 'ghostty-web'
+import { MultiFileDiff } from '@pierre/diffs/react'
+import modelsJson from '../../core/models.json'
+import type { FileContents } from '@pierre/diffs/react'
 import { Button } from '@/components/ui/button'
 import { useWS } from '@/lib/websocket'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export const Route = createFileRoute('/')({
   component: App,
 })
 
+const agentModelMapping = modelsJson as Record<string, Array<string>>
+const agents = Object.keys(agentModelMapping)
+
 function App() {
   const ws = useWS()
-  const [runRequested, setRunRequested] = useState(false)
+  const [runRequested, setRunRequested] = useState<Record<string, boolean>>({})
 
   return (
-    <div>
+    <div className="flex flex-col items-center">
       <div>
-        <Button
-          onClick={() => {
-            ws.send('amp')
-            setRunRequested(true)
-          }}
-        >
-          Run Amp
-        </Button>
+        <div>
+          <textarea></textarea>
+        </div>
+
+        <div>
+          <SingleDiff />
+        </div>
+      </div>
+
+      <div className="flex flex-col items-center gap-4">
+        <div className="flex gap-4 flex-wrap">
+          {agents.map((agent) => (
+            <div className="flex gap-2 items-center bg-secondary rounded-lg p-2 border w-fit">
+              <Button
+                onClick={() => {
+                  ws.send(agent)
+                  setRunRequested((prev) => ({ ...prev, [agent]: true }))
+                }}
+              >
+                RUN
+              </Button>
+
+              <span className="font-bold capitalize">{agent}</span>
+
+              <Select>
+                <SelectTrigger className="w-fit">
+                  <SelectValue placeholder="model" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {Object.values(agentModelMapping[agent]).map((model) => (
+                      <SelectItem value={model}>{model}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
+        </div>
 
         <Button
+          className="font-bold uppercase"
+          variant="destructive"
           onClick={() => {
             ws.conn?.close()
           }}
         >
-          Close
+          close all
         </Button>
       </div>
 
-      <div>
-        <Amp runRequested={runRequested} />
+      <div className="w-4xl flex flex-col gap-8">
+        {agents.map((agent) => (
+          <Agent
+            key={agent}
+            name={agent}
+            runRequested={runRequested[agent] ?? false}
+          />
+        ))}
       </div>
     </div>
   )
 }
 
-function Amp({ runRequested }: { runRequested: boolean }) {
+function Agent({
+  name,
+  runRequested,
+}: {
+  name: string
+  runRequested: boolean
+}) {
   const ws = useWS()
   const termDivContainer = useRef<HTMLDivElement | null>(null)
   const termInstance = useRef<Terminal | null>(null)
@@ -49,12 +108,14 @@ function Amp({ runRequested }: { runRequested: boolean }) {
     let active = true
     let dataDisposable: { dispose: () => void } | null = null
     let socket: WebSocket | null = null
+    let fitAddon: FitAddon | null = null
 
     const teardownSocket = () => {
       dataDisposable?.dispose()
       dataDisposable = null
       if (socket) {
         socket.removeEventListener('message', handleMessage)
+        socket.removeEventListener('close', handleClose)
         socket = null
       }
     }
@@ -64,9 +125,10 @@ function Amp({ runRequested }: { runRequested: boolean }) {
       socket = conn
       dataDisposable = term.onData((data) => {
         console.log({ data })
-        socket?.send(`amp:${data}`)
+        socket?.send(`${name}:${data}`)
       })
       socket.addEventListener('message', handleMessage)
+      socket.addEventListener('close', handleClose)
     }
 
     const handleMessage = (event: MessageEvent) => {
@@ -77,6 +139,11 @@ function Amp({ runRequested }: { runRequested: boolean }) {
       } else if (event.data instanceof ArrayBuffer) {
         term.write(new Uint8Array(event.data))
       }
+    }
+
+    const handleClose = () => {
+      termInstance.current?.dispose()
+      termInstance.current = null
     }
 
     async function ensureTerminalSetup() {
@@ -108,14 +175,39 @@ function Amp({ runRequested }: { runRequested: boolean }) {
           brightWhite: '#ffffff',
         },
       })
+      fitAddon = new FitAddon()
+      term.loadAddon(fitAddon)
+
       term.open(host)
       termInstance.current = term
+
+      fitAddon.fit()
+      fitAddon.observeResize()
     }
+
+    const handleResize = () => {
+      fitAddon?.fit()
+    }
+
+    window.addEventListener('resize', handleResize)
 
     async function ensureSocketAttached() {
       await ensureTerminalSetup()
       if (!active || !ws.conn || !termInstance.current) return
       attachSocket(ws.conn, termInstance.current)
+
+      termInstance.current.onResize((size) => {
+        if (ws.conn && ws.ready) {
+          // Send resize as control sequence (server expects this format)
+          ws.send(
+            JSON.stringify({
+              type: 'resize',
+              cols: size.cols,
+              rows: size.rows,
+            }),
+          )
+        }
+      })
     }
 
     if (runRequested) {
@@ -127,12 +219,47 @@ function Amp({ runRequested }: { runRequested: boolean }) {
       teardownSocket()
       termInstance.current?.dispose()
       termInstance.current = null
+
+      window.removeEventListener('resize', handleResize)
     }
   }, [runRequested, ws.conn])
 
   return (
-    <div className="h-105 rounded-md bg-background">
-      <div ref={termDivContainer} className="h-full w-full" />
+    <div className="rounded-lg p-2 bg-secondary border">
+      <div ref={termDivContainer} className="h-full w-full caret-background" />
     </div>
+  )
+}
+
+const oldFile: FileContents = {
+  name: 'main.zig',
+  contents: `const std = @import("std");
+
+pub fn main() !void {
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print("Hi you, {s}!\\\\n", .{"world"});
+}
+`,
+}
+
+const newFile: FileContents = {
+  name: 'main.zig',
+  contents: `const std = @import("std");
+
+pub fn main() !void {
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print("Hello there, {s}!\\\\n", .{"zig"});
+}
+`,
+}
+
+function SingleDiff() {
+  return (
+    <MultiFileDiff
+      // We automatically detect the language based on filename
+      oldFile={oldFile}
+      newFile={newFile}
+      options={{ theme: 'pierre-dark' }}
+    />
   )
 }
