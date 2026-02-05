@@ -3,6 +3,6 @@
   "droid": ["gpt-5.2", "gpt-5.2-codex", "kimi-k2.5"],
   "pi": ["claude-opus-4-5", "gpt-5.2", "gpt-5.2-codex"],
   "codex": ["gpt-5.2", "gpt-5.2-codex"],
-  "claude": ["claude-opus-4-5-20251101", "claude-sonnet-4-5-20250929"],
+  "claude": ["claude-opus-4-5", "claude-sonnet-4-5"],
   "opencode": ["claude opus 4.5", "kimi k2.5", "gpt-5.2", "gpt-5.2 codex"]
 }

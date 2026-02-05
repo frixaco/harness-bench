@@ -31,7 +31,14 @@ Bun.serve({
             cols: defaultCols,
             rows: defaultRows,
             data(terminal, data) {
-              ws.send(data)
+              const encoded = Buffer.from(data).toString('base64')
+              ws.send(
+                JSON.stringify({
+                  type: 'output',
+                  agent,
+                  data: encoded,
+                }),
+              )
             },
           },
         })
@@ -39,6 +46,14 @@ Bun.serve({
       } else if (typeof message === 'string' && message.startsWith('{')) {
         try {
           const payload = JSON.parse(message)
+          if (payload.type === 'input') {
+            const agent = payload.agent
+            if (!agent || typeof agent !== 'string') return
+            if (!agents.includes(agent)) return
+            if (typeof payload.data !== 'string') return
+            procs.get(agent)?.terminal?.write(payload.data)
+            return
+          }
           if (payload.type === 'resize') {
             const agent = payload.agent
             if (!agent || typeof agent !== 'string') return

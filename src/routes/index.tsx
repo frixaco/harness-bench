@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { Terminal, init } from 'ghostty-web'
 import { MultiFileDiff } from '@pierre/diffs/react'
+import { Columns2, Play, RefreshCcw } from 'lucide-react'
 import modelsJson from '../../core/models.json'
 import type { FileContents } from '@pierre/diffs/react'
 import { Button } from '@/components/ui/button'
@@ -14,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 
 export const Route = createFileRoute('/')({
   component: App,
@@ -21,48 +23,59 @@ export const Route = createFileRoute('/')({
 
 const agentModelMapping = modelsJson as Record<string, Array<string>>
 const agents = Object.keys(agentModelMapping)
+const defaultRunRequested = agents.reduce(
+  (a, c) => {
+    a[c] = false
+    return a
+  },
+  {} as Record<string, boolean>,
+)
 
 function App() {
+  const [prompt, setPrompt] = useState('')
   const ws = useWS()
-  const [runRequested, setRunRequested] = useState<Record<string, boolean>>(
-    agents.reduce(
-      (a, c) => {
-        a[c] = false
-        return a
-      },
-      {} as Record<string, boolean>,
-    ),
-  )
+  const [runRequested, setRunRequested] =
+    useState<Record<string, boolean>>(defaultRunRequested)
+  console.log({ prompt })
 
   return (
-    <div className="flex w-full flex-col items-center gap-8">
-      <div>
-        <div>
-          <textarea></textarea>
-        </div>
+    <div className="flex w-full flex-col items-center gap-2 text-sm pt-24 px-24 font-mono">
+      <div className="flex flex-col md:flex-row gap-2 justify-center-center">
+        <Textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.currentTarget.value)}
+          placeholder="Enter your prompt..."
+          className="w-xl"
+        ></Textarea>
 
-        <div>
-          <SingleDiff />
-        </div>
+        <SingleDiff />
       </div>
 
-      <div className="flex flex-col items-center gap-4">
-        <div className="flex gap-4 flex-wrap">
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex gap-2 flex-wrap">
           {agents.map((agent) => (
-            <div className="flex gap-2 items-center bg-secondary rounded-lg p-2 border w-fit">
-              <Button
-                onClick={() => {
-                  ws.send(agent)
-                  setRunRequested((prev) => ({ ...prev, [agent]: true }))
-                }}
-              >
-                RUN
-              </Button>
-
-              <span className="font-bold capitalize">{agent}</span>
+            <div className="flex flex-col gap-1 items-center rounded-lg p-1 border">
+              <div className="flex min-w-36 items-center w-full justify-between">
+                <span className="capitalize px-2">{agent}</span>
+                <Button
+                  className="rounded-full"
+                  size="icon"
+                  variant="link"
+                  onClick={() => {
+                    ws.send(agent)
+                    setRunRequested((prev) => ({ ...prev, [agent]: true }))
+                  }}
+                >
+                  {runRequested[agent] ? (
+                    <RefreshCcw className="animate-spin" />
+                  ) : (
+                    <Play />
+                  )}
+                </Button>
+              </div>
 
               <Select>
-                <SelectTrigger className="w-fit">
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="model" />
                 </SelectTrigger>
                 <SelectContent>
@@ -77,18 +90,31 @@ function App() {
           ))}
         </div>
 
-        <Button
-          className="font-bold uppercase"
-          variant="destructive"
-          onClick={() => {
-            ws.conn?.close()
-          }}
-        >
-          close all
-        </Button>
+        <div className="flex gap-4 py-8">
+          <Button
+            className="font-semibold uppercase px-4 w-24"
+            size="lg"
+            disabled={prompt.length < 2}
+            onClick={() => {}}
+          >
+            RUN
+          </Button>
+
+          <Button
+            className="font-semibold uppercase px-4 w-24"
+            size="lg"
+            variant="destructive"
+            onClick={() => {
+              ws.conn?.close()
+              setRunRequested(defaultRunRequested)
+            }}
+          >
+            STOP
+          </Button>
+        </div>
       </div>
 
-      <div className="flex size-full gap-8 flex-wrap justify-center">
+      <div className="flex size-full gap-4 flex-wrap justify-center">
         {agents.map((agent) => (
           <Agent
             key={agent}
@@ -138,7 +164,13 @@ function Agent({
       socket = conn
       dataDisposable = term.onData((data) => {
         console.log({ data })
-        socket?.send(`${name}:${data}`)
+        socket?.send(
+          JSON.stringify({
+            type: 'input',
+            agent: name,
+            data,
+          }),
+        )
       })
       socket.addEventListener('message', handleMessage)
       socket.addEventListener('close', handleClose)
@@ -147,10 +179,24 @@ function Agent({
     const handleMessage = (event: MessageEvent) => {
       const term = termInstance.current
       if (!term) return
-      if (typeof event.data === 'string') {
-        term.write(event.data)
-      } else if (event.data instanceof ArrayBuffer) {
-        term.write(new Uint8Array(event.data))
+      const payload = event.data
+      if (typeof payload === 'string') {
+        try {
+          const message = JSON.parse(payload)
+          if (message.type !== 'output') return
+          if (message.agent !== name) return
+          if (typeof message.data !== 'string') return
+          const decoded = atob(message.data)
+          const bytes = new Uint8Array(decoded.length)
+          for (let i = 0; i < decoded.length; i += 1) {
+            bytes[i] = decoded.charCodeAt(i)
+          }
+          term.write(bytes)
+        } catch (error) {
+          console.warn('Invalid output payload', error)
+        }
+      } else if (payload instanceof ArrayBuffer) {
+        term.write(new Uint8Array(payload))
       }
     }
 
@@ -248,7 +294,15 @@ function Agent({
   }, [runRequested, ws.conn])
 
   return (
-    <div className="h-120 w-xl rounded-lg border bg-secondary p-2">
+    <div className="h-120 w-full max-w-lg">
+      <div className="bg-secondary rounded-t-lg px-4 py-2 flex justify-between items-center">
+        <p className="capitalize">{name}</p>
+
+        <Button variant="outline" disabled={true} className="tracking-tighter">
+          View diff <Columns2 />
+        </Button>
+      </div>
+
       <div
         ref={termDivContainer}
         className="h-full w-full bg-[#16181a] caret-background"
