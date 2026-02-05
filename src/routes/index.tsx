@@ -47,82 +47,78 @@ function App() {
   console.log({ prompt })
 
   return (
-    <div className="flex w-full flex-col items-center gap-2 text-sm pt-24 px-24 font-mono">
+    <div className="flex w-full flex-col items-center gap-8 text-sm pt-24 px-24 font-mono">
       <div className="flex flex-col md:flex-row gap-2 justify-center-center">
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.currentTarget.value)}
           placeholder="Enter your prompt..."
-          className="w-xl"
+          className="w-xl h-28"
         ></Textarea>
-
-        <SingleDiff />
       </div>
 
-      <div className="flex flex-col items-center gap-2">
-        <div className="flex gap-2 flex-wrap">
-          {agents.map((agent) => (
-            <div
-              className="flex flex-col gap-1 items-center rounded-lg p-1 border"
-              style={getAgentPattern(agent)}
-            >
-              <div className="flex min-w-36 items-center w-full justify-between">
-                <span className="capitalize px-2">{agent}</span>
-                <Button
-                  className="rounded-full"
-                  size="icon"
-                  variant="link"
-                  onClick={() => {
-                    ws.send(agent)
-                    setRunRequested((prev) => ({ ...prev, [agent]: true }))
-                  }}
-                >
-                  {runRequested[agent] ? (
-                    <RefreshCcw className="animate-spin" />
-                  ) : (
-                    <Play />
-                  )}
-                </Button>
-              </div>
-
-              <Select>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="model" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {Object.values(agentModelMapping[agent]).map((model) => (
-                      <SelectItem value={model}>{model}</SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+      <div className="flex gap-2 flex-wrap">
+        {agents.map((agent) => (
+          <div
+            className="flex flex-col gap-1 items-center rounded-lg p-1 border"
+            style={getAgentPattern(agent)}
+          >
+            <div className="flex min-w-36 items-center w-full justify-between">
+              <span className="capitalize px-2">{agent}</span>
+              <Button
+                className="rounded-full"
+                size="icon"
+                variant="link"
+                onClick={() => {
+                  ws.send(agent)
+                  setRunRequested((prev) => ({ ...prev, [agent]: true }))
+                }}
+              >
+                {runRequested[agent] ? (
+                  <RefreshCcw className="animate-spin" />
+                ) : (
+                  <Play />
+                )}
+              </Button>
             </div>
-          ))}
-        </div>
 
-        <div className="flex gap-4 py-8">
-          <Button
-            className="font-semibold uppercase px-4 w-24"
-            size="lg"
-            disabled={prompt.length < 2}
-            onClick={() => {}}
-          >
-            RUN
-          </Button>
+            <Select>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="model" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {Object.values(agentModelMapping[agent]).map((model) => (
+                    <SelectItem value={model}>{model}</SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+        ))}
+      </div>
 
-          <Button
-            className="font-semibold uppercase px-4 w-24"
-            size="lg"
-            variant="destructive"
-            onClick={() => {
-              ws.conn?.close()
-              setRunRequested(defaultRunRequested)
-            }}
-          >
-            STOP
-          </Button>
-        </div>
+      <div className="flex gap-4">
+        <Button
+          className="font-semibold uppercase px-4 w-24"
+          size="lg"
+          disabled={prompt.length < 2}
+          onClick={() => {}}
+        >
+          RUN
+        </Button>
+
+        <Button
+          className="font-semibold uppercase px-4 w-24"
+          size="lg"
+          variant="destructive"
+          onClick={() => {
+            ws.conn?.close()
+            setRunRequested(defaultRunRequested)
+          }}
+        >
+          STOP
+        </Button>
       </div>
 
       <div className="flex size-full gap-4 flex-wrap justify-center">
