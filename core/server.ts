@@ -3,6 +3,8 @@ import agentModeMapping from './models.json'
 const procs = new Map<string, Bun.Subprocess>()
 
 const agents = Object.keys(agentModeMapping)
+const defaultCols = 80
+const defaultRows = 24
 
 Bun.serve({
   port: 4000,
@@ -26,14 +28,30 @@ Bun.serve({
             // exit handler
           },
           terminal: {
-            cols: 80,
-            rows: 24,
+            cols: defaultCols,
+            rows: defaultRows,
             data(terminal, data) {
               ws.send(data)
             },
           },
         })
         procs.set(agent, proc)
+      } else if (typeof message === 'string' && message.startsWith('{')) {
+        try {
+          const payload = JSON.parse(message)
+          if (payload.type === 'resize') {
+            const agent = payload.agent
+            if (!agent || typeof agent !== 'string') return
+            if (!agents.includes(agent)) return
+            const cols = Number(payload.cols)
+            const rows = Number(payload.rows)
+            if (!Number.isFinite(cols) || !Number.isFinite(rows)) return
+            procs.get(agent)?.terminal?.resize(cols, rows)
+            return
+          }
+        } catch (error) {
+          console.warn('Invalid message payload', error)
+        }
       } else if (typeof message === 'string') {
         const [agent, input] = message.split(':')
         procs.get(agent)?.terminal?.write(input)

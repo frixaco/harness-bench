@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { FitAddon, Terminal, init } from 'ghostty-web'
+import { Terminal, init } from 'ghostty-web'
 import { MultiFileDiff } from '@pierre/diffs/react'
 import modelsJson from '../../core/models.json'
 import type { FileContents } from '@pierre/diffs/react'
@@ -24,10 +24,18 @@ const agents = Object.keys(agentModelMapping)
 
 function App() {
   const ws = useWS()
-  const [runRequested, setRunRequested] = useState<Record<string, boolean>>({})
+  const [runRequested, setRunRequested] = useState<Record<string, boolean>>(
+    agents.reduce(
+      (a, c) => {
+        a[c] = false
+        return a
+      },
+      {} as Record<string, boolean>,
+    ),
+  )
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex w-full flex-col items-center gap-8">
       <div>
         <div>
           <textarea></textarea>
@@ -80,7 +88,7 @@ function App() {
         </Button>
       </div>
 
-      <div className="w-4xl flex flex-col gap-8">
+      <div className="flex size-full gap-8 flex-wrap justify-center">
         {agents.map((agent) => (
           <Agent
             key={agent}
@@ -107,12 +115,17 @@ function Agent({
   useEffect(() => {
     let active = true
     let dataDisposable: { dispose: () => void } | null = null
+    let resizeDisposable: { dispose: () => void } | null = null
+    let resizeObserver: ResizeObserver | null = null
     let socket: WebSocket | null = null
-    let fitAddon: FitAddon | null = null
 
     const teardownSocket = () => {
       dataDisposable?.dispose()
       dataDisposable = null
+      resizeDisposable?.dispose()
+      resizeDisposable = null
+      resizeObserver?.disconnect()
+      resizeObserver = null
       if (socket) {
         socket.removeEventListener('message', handleMessage)
         socket.removeEventListener('close', handleClose)
@@ -146,6 +159,28 @@ function Agent({
       termInstance.current = null
     }
 
+    const sendResize = (cols: number, rows: number) => {
+      if (!ws.conn || !ws.ready) return
+      ws.send(
+        JSON.stringify({
+          type: 'resize',
+          agent: name,
+          cols,
+          rows,
+        }),
+      )
+    }
+
+    const fitTerminal = (term: Terminal) => {
+      const host = termDivContainer.current
+      if (!host || !term.renderer) return
+      const metrics = term.renderer.getMetrics()
+      if (!metrics.width || !metrics.height) return
+      const cols = Math.max(2, Math.floor(host.clientWidth / metrics.width))
+      const rows = Math.max(1, Math.floor(host.clientHeight / metrics.height))
+      term.resize(cols, rows)
+    }
+
     async function ensureTerminalSetup() {
       const host = termDivContainer.current
       if (!host || termInstance.current) return
@@ -175,39 +210,29 @@ function Agent({
           brightWhite: '#ffffff',
         },
       })
-      fitAddon = new FitAddon()
-      term.loadAddon(fitAddon)
-
       term.open(host)
       termInstance.current = term
+      fitTerminal(term)
 
-      fitAddon.fit()
-      fitAddon.observeResize()
+      resizeObserver = new ResizeObserver(() => {
+        if (termInstance.current) {
+          fitTerminal(termInstance.current)
+        }
+      })
+      resizeObserver.observe(host)
     }
-
-    const handleResize = () => {
-      fitAddon?.fit()
-    }
-
-    window.addEventListener('resize', handleResize)
 
     async function ensureSocketAttached() {
       await ensureTerminalSetup()
       if (!active || !ws.conn || !termInstance.current) return
       attachSocket(ws.conn, termInstance.current)
 
-      termInstance.current.onResize((size) => {
-        if (ws.conn && ws.ready) {
-          // Send resize as control sequence (server expects this format)
-          ws.send(
-            JSON.stringify({
-              type: 'resize',
-              cols: size.cols,
-              rows: size.rows,
-            }),
-          )
-        }
+      resizeDisposable = termInstance.current.onResize((size) => {
+        sendResize(size.cols, size.rows)
       })
+
+      fitTerminal(termInstance.current)
+      sendResize(termInstance.current.cols, termInstance.current.rows)
     }
 
     if (runRequested) {
@@ -219,14 +244,15 @@ function Agent({
       teardownSocket()
       termInstance.current?.dispose()
       termInstance.current = null
-
-      window.removeEventListener('resize', handleResize)
     }
   }, [runRequested, ws.conn])
 
   return (
-    <div className="rounded-lg p-2 bg-secondary border">
-      <div ref={termDivContainer} className="h-full w-full caret-background" />
+    <div className="h-120 w-xl rounded-lg border bg-secondary p-2">
+      <div
+        ref={termDivContainer}
+        className="h-full w-full bg-[#16181a] caret-background"
+      />
     </div>
   )
 }
