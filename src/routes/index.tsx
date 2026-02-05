@@ -16,6 +16,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
+import { getAgentPattern } from '@/lib/agent-patterns'
 
 export const Route = createFileRoute('/')({
   component: App,
@@ -54,7 +62,10 @@ function App() {
       <div className="flex flex-col items-center gap-2">
         <div className="flex gap-2 flex-wrap">
           {agents.map((agent) => (
-            <div className="flex flex-col gap-1 items-center rounded-lg p-1 border">
+            <div
+              className="flex flex-col gap-1 items-center rounded-lg p-1 border"
+              style={getAgentPattern(agent)}
+            >
               <div className="flex min-w-36 items-center w-full justify-between">
                 <span className="capitalize px-2">{agent}</span>
                 <Button
@@ -116,7 +127,7 @@ function App() {
 
       <div className="flex size-full gap-4 flex-wrap justify-center">
         {agents.map((agent) => (
-          <Agent
+          <TUI
             key={agent}
             name={agent}
             runRequested={runRequested[agent] ?? false}
@@ -127,13 +138,7 @@ function App() {
   )
 }
 
-function Agent({
-  name,
-  runRequested,
-}: {
-  name: string
-  runRequested: boolean
-}) {
+function TUI({ name, runRequested }: { name: string; runRequested: boolean }) {
   const ws = useWS()
   const termDivContainer = useRef<HTMLDivElement | null>(null)
   const termInstance = useRef<Terminal | null>(null)
@@ -295,17 +300,38 @@ function Agent({
 
   return (
     <div className="h-120 w-full max-w-lg">
-      <div className="bg-secondary rounded-t-lg px-4 py-2 flex justify-between items-center">
+      <div className="border rounded-t-lg px-4 py-2 flex justify-between items-center">
         <p className="capitalize">{name}</p>
 
-        <Button variant="outline" disabled={true} className="tracking-tighter">
-          View diff <Columns2 />
-        </Button>
+        <Sheet>
+          <SheetTrigger
+            render={
+              <Button
+                disabled={true}
+                variant="outline"
+                className="tracking-tighter"
+              />
+            }
+          >
+            View diff <Columns2 />
+          </SheetTrigger>
+          <SheetContent
+            side="right"
+            className="data-[side=right]:w-[90vw] data-[side=right]:sm:max-w-[90vw]"
+          >
+            <SheetHeader>
+              <SheetTitle className="capitalize">{name} — Diff</SheetTitle>
+            </SheetHeader>
+            <div className="overflow-auto flex-1 p-4">
+              <SingleDiff />
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
 
       <div
         ref={termDivContainer}
-        className="h-full w-full bg-[#16181a] caret-background"
+        className="h-full w-full caret-background border"
       />
     </div>
   )
