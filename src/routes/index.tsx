@@ -205,7 +205,28 @@ function App() {
           className="font-semibold uppercase px-4 w-24"
           size="lg"
           disabled={prompt.length < 2}
-          onClick={() => {}}
+          onClick={() => {
+            const trimmedPrompt = prompt.trim()
+            if (!trimmedPrompt) return
+            agents.forEach((agent) => {
+              ws.send(
+                JSON.stringify({
+                  type: 'input',
+                  agent,
+                  data: trimmedPrompt,
+                }),
+              )
+              window.setTimeout(() => {
+                ws.send(
+                  JSON.stringify({
+                    type: 'input',
+                    agent,
+                    data: '\r',
+                  }),
+                )
+              }, 250)
+            })
+          }}
         >
           RUN
         </Button>
