@@ -1,11 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Terminal, init } from 'ghostty-web'
-import { MultiFileDiff } from '@pierre/diffs/react'
+import { PatchDiff } from '@pierre/diffs/react'
 import { Columns2, Play, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import modelsJson from '../../core/models.json'
-import type { FileContents } from '@pierre/diffs/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useWS } from '@/lib/websocket'
@@ -18,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { ThemeToggle } from '@/components/theme-toggle'
 import {
   Sheet,
   SheetContent,
@@ -110,8 +110,12 @@ function App() {
   }, [ws.conn])
 
   return (
-    <div className="flex w-full flex-col items-center gap-8 text-sm pt-24 px-24 font-mono">
-      <div className="flex flex-col md:flex-row gap-2 justify-center-center w-full max-w-3xl">
+    <div className="flex w-full flex-col items-center gap-8 text-sm pt-16 px-24 font-mono">
+      <div className="flex w-full justify-end">
+        <ThemeToggle />
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-2 justify-center-center w-full max-w-4xl">
         <Input
           value={repoUrl}
           onChange={(e) => setRepoUrl(e.currentTarget.value)}
@@ -120,23 +124,22 @@ function App() {
         />
       </div>
 
-      <div className="flex flex-col md:flex-row gap-2 justify-center-center">
+      <div className="flex flex-col md:flex-row gap-2 justify-center-center w-full max-w-4xl">
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.currentTarget.value)}
           placeholder="Enter your prompt..."
-          className="w-xl h-28"
+          className="w-full h-28"
         ></Textarea>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex w-full max-w-4xl gap-2 flex-wrap justify-start">
         {agents.map((agent) => (
           <div
             className="flex flex-col gap-1 items-center rounded-lg p-1 border"
             style={getAgentPattern(agent)}
           >
-            <div className="flex min-w-36 items-center w-full justify-between">
-              <span className="capitalize px-2">{agent}</span>
+            <div className="flex min-w-36 items-center w-full justify-start">
               <Button
                 className="rounded-full"
                 size="icon"
@@ -152,6 +155,7 @@ function App() {
                   <Play />
                 )}
               </Button>
+              <span className="capitalize px-2">{agent}</span>
             </div>
 
             <Select>
@@ -269,6 +273,8 @@ function App() {
             key={agent}
             name={agent}
             runRequested={runRequested[agent] ?? false}
+            repoReady={repoUrl.trim().length > 0}
+            repoUrl={repoUrl.trim()}
           />
         ))}
       </div>
@@ -276,10 +282,26 @@ function App() {
   )
 }
 
-function TUI({ name, runRequested }: { name: string; runRequested: boolean }) {
+function TUI({
+  name,
+  runRequested,
+  repoReady,
+  repoUrl,
+}: {
+  name: string
+  runRequested: boolean
+  repoReady: boolean
+  repoUrl: string
+}) {
   const ws = useWS()
   const termDivContainer = useRef<HTMLDivElement | null>(null)
   const termInstance = useRef<Terminal | null>(null)
+  const [diffOpen, setDiffOpen] = useState(false)
+  const [diffPatch, setDiffPatch] = useState<string | null>(null)
+  const [diffError, setDiffError] = useState<string | null>(null)
+  const [diffLoading, setDiffLoading] = useState(false)
+  const [diffChecked, setDiffChecked] = useState(false)
+  const [diffRepoUrl, setDiffRepoUrl] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -436,18 +458,68 @@ function TUI({ name, runRequested }: { name: string; runRequested: boolean }) {
     }
   }, [runRequested, ws.conn])
 
+  const fetchDiff = useCallback(
+    async (repoUrlOverride?: string) => {
+      setDiffLoading(true)
+      setDiffError(null)
+      setDiffChecked(false)
+      try {
+        const repoUrlParam = repoUrlOverride ?? diffRepoUrl ?? repoUrl
+        const diffBase = `${window.location.protocol}//${window.location.hostname}:4000`
+        const search = new URLSearchParams({
+          agent: name,
+          t: Date.now().toString(),
+        })
+        if (repoUrlParam) {
+          search.set('repoUrl', repoUrlParam)
+        }
+        const response = await fetch(`${diffBase}/diff?${search.toString()}`)
+        const body = await response.text()
+        if (!response.ok) {
+          throw new Error(body || 'Failed to load diff')
+        }
+        const trimmed = body.trim()
+        setDiffPatch(trimmed.length > 0 ? body : null)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        setDiffError(message)
+        setDiffPatch(null)
+      } finally {
+        setDiffLoading(false)
+        setDiffChecked(true)
+      }
+    },
+    [diffRepoUrl, name, repoUrl],
+  )
+
   return (
     <div className="h-120 flex flex-col w-full max-w-lg">
       <div className="border rounded-t-lg px-4 py-2 flex justify-between items-center">
         <p className="capitalize">{name}</p>
 
-        <Sheet>
+        <Sheet
+          open={diffOpen}
+          onOpenChange={(open) => {
+            setDiffOpen(open)
+            if (open) {
+              setDiffRepoUrl(repoUrl)
+              fetchDiff(repoUrl)
+            }
+          }}
+        >
           <SheetTrigger
             render={
               <Button
-                disabled={true}
                 variant="outline"
                 className="tracking-tighter"
+                disabled={!repoReady}
+                onClick={() => {
+                  if (!diffOpen) {
+                    setDiffOpen(true)
+                  }
+                  setDiffRepoUrl(repoUrl)
+                  fetchDiff(repoUrl)
+                }}
               />
             }
           >
@@ -461,7 +533,11 @@ function TUI({ name, runRequested }: { name: string; runRequested: boolean }) {
               <SheetTitle className="capitalize">{name} — Diff</SheetTitle>
             </SheetHeader>
             <div className="overflow-auto flex-1 p-4">
-              <SingleDiff />
+              <DiffView
+                loading={diffLoading}
+                error={diffError}
+                patch={diffPatch}
+              />
             </div>
           </SheetContent>
         </Sheet>
@@ -475,35 +551,23 @@ function TUI({ name, runRequested }: { name: string; runRequested: boolean }) {
   )
 }
 
-const oldFile: FileContents = {
-  name: 'main.zig',
-  contents: `const std = @import("std");
-
-pub fn main() !void {
-    const stdout = std.io.getStdOut().writer();
-    try stdout.print("Hi you, {s}!\\\\n", .{"world"});
-}
-`,
-}
-
-const newFile: FileContents = {
-  name: 'main.zig',
-  contents: `const std = @import("std");
-
-pub fn main() !void {
-    const stdout = std.io.getStdOut().writer();
-    try stdout.print("Hello there, {s}!\\\\n", .{"zig"});
-}
-`,
-}
-
-function SingleDiff() {
-  return (
-    <MultiFileDiff
-      // We automatically detect the language based on filename
-      oldFile={oldFile}
-      newFile={newFile}
-      options={{ theme: 'pierre-dark' }}
-    />
-  )
+function DiffView({
+  loading,
+  error,
+  patch,
+}: {
+  loading: boolean
+  error: string | null
+  patch: string | null
+}) {
+  if (loading) {
+    return <p className="text-muted-foreground">Loading diff...</p>
+  }
+  if (error) {
+    return <p className="text-destructive">{error}</p>
+  }
+  if (!patch) {
+    return <p className="text-muted-foreground">No changes yet.</p>
+  }
+  return <PatchDiff patch={patch} options={{ theme: 'pierre-dark' }} />
 }

@@ -32,6 +32,63 @@ const runGit = async (args: string[], cwd: string) => {
   }
 }
 
+const runGitWithOutput = async (args: string[], cwd: string) => {
+  const proc = Bun.spawn(['git', ...args], {
+    cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const exitCode = await proc.exited
+  const stdout = await new Response(proc.stdout).text()
+  if (exitCode !== 0) {
+    const stderr = await new Response(proc.stderr).text()
+    throw new Error(`git ${args.join(' ')} failed: ${stderr.trim()}`)
+  }
+  return stdout
+}
+
+const runGitNoIndexDiff = async (args: string[], cwd: string) => {
+  const proc = Bun.spawn(['git', ...args], {
+    cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const exitCode = await proc.exited
+  const stdout = await new Response(proc.stdout).text()
+  if (exitCode > 1) {
+    const stderr = await new Response(proc.stderr).text()
+    throw new Error(`git ${args.join(' ')} failed: ${stderr.trim()}`)
+  }
+  return stdout
+}
+
+const buildWorktreeDiff = async (cwd: string) => {
+  const diff = await runGitWithOutput(['-C', cwd, 'diff'], cwd)
+  const status = await runGitWithOutput(
+    ['-C', cwd, 'status', '--porcelain'],
+    cwd,
+  )
+  const untracked = status
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('?? '))
+    .map((line) => line.slice(3))
+
+  if (untracked.length === 0) {
+    return diff
+  }
+
+  const untrackedDiffs = await Promise.all(
+    untracked.map((file) =>
+      runGitNoIndexDiff(
+        ['-C', cwd, 'diff', '--no-index', '--', '/dev/null', file],
+        cwd,
+      ),
+    ),
+  )
+  return [diff, ...untrackedDiffs].filter(Boolean).join('\n')
+}
+
 const sendStatus = (
   ws: Bun.ServerWebSocket<undefined>,
   type: 'setup-status' | 'wipe-status',
@@ -107,6 +164,60 @@ Bun.serve({
   port: 4000,
   fetch(req, server) {
     const url = new URL(req.url)
+    if (url.pathname === '/diff' && req.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: {
+          'access-control-allow-origin': '*',
+          'access-control-allow-methods': 'GET, OPTIONS',
+          'access-control-allow-headers': 'content-type',
+        },
+      })
+    }
+    if (url.pathname === '/diff' && req.method === 'GET') {
+      const agent = url.searchParams.get('agent')
+      if (!agent || !agents.includes(agent)) {
+        return new Response('Unknown agent', {
+          status: 400,
+          headers: { 'access-control-allow-origin': '*' },
+        })
+      }
+      let cwd = agentWorktrees.get(agent)
+      if (!cwd) {
+        const repoUrl = url.searchParams.get('repoUrl')
+        const slug = repoUrl ? repoSlugFromUrl(repoUrl) : null
+        if (slug) {
+          const candidate = path.join(sandboxRoot, slug, 'worktrees', agent)
+          if (existsSync(candidate)) {
+            cwd = candidate
+            agentWorktrees.set(agent, candidate)
+          }
+        }
+      }
+      if (!cwd) {
+        return new Response('No worktree configured. Run SETUP first.', {
+          status: 400,
+          headers: { 'access-control-allow-origin': '*' },
+        })
+      }
+      return buildWorktreeDiff(cwd)
+        .then(
+          (diff) =>
+            new Response(diff || '', {
+              headers: {
+                'content-type': 'text/plain; charset=utf-8',
+                'access-control-allow-origin': '*',
+              },
+            }),
+        )
+        .catch((error) => {
+          const message =
+            error instanceof Error ? error.message : 'Unknown error'
+          return new Response(message, {
+            status: 500,
+            headers: { 'access-control-allow-origin': '*' },
+          })
+        })
+    }
     if (url.pathname == '/vt' && req.headers.get('upgrade') === 'websocket') {
       if (server.upgrade(req)) return
       return new Response('Upgrade failed', { status: 400 })

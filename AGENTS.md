@@ -1,43 +1,72 @@
 # hbench
 
-CLI agent benchmarker dashboard.
+CLI agent benchmark dashboard. Run local coding-agent CLIs in parallel, stream PTY output live, inspect per-agent diffs.
 
 ## Stack
 
 - TanStack Start + React 19
-- Tailwind 4 + shadcn (base-ui)
-- Bun (not Node)
+- Bun runtime/server (no Node runtime)
+- Tailwind 4 + shadcn/base-ui
+- `ghostty-web` terminal renderer
+- `@pierre/diffs` for patch rendering
 
 ## Commands
 
 ```bash
-bun run dev      # dev server on :3000
+bun run dev      # starts UI (:3000) + PTY server (:4000)
+bun run ui       # UI only (Vite :3000)
+bun run pty      # Bun PTY/WebSocket server (:4000)
 bun run build    # production build
-bun run check    # format + lint
-bun run test     # vitest
+bun run preview  # preview built app
+bun run start    # start output server (.output/server/index.mjs)
+bun run test     # vitest (run)
+bun run check    # prettier --write + eslint --fix
+bun run lint     # eslint
+bun run format   # prettier
 ```
+
+## Runtime Requirements
+
+- Bun installed
+- Git installed
+- Agent CLIs on `PATH`: `amp`, `droid`, `pi`, `codex`, `claude`, `opencode`
 
 ## Architecture
 
-- TanStack Start routing. Root shell in `src/routes/__root.tsx`
-- WebSocket provider in `src/lib/websocket.tsx`. Connects to Bun server on `ws://localhost:4000/vt`
-- Dashboard UI in `src/routes/index.tsx`. Agent cards + model selectors + terminal grid
-- Terminal grid uses `ghostty-web` to render PTY output per agent
-- Backend in `core/server.ts`. Spawns agent PTYs and streams base64 output over WebSocket
-- Agent model list in `core/models.json`
-- Theme management in `src/components/theme-provider.tsx` + `src/styles.css`
+- Root shell/router: `src/routes/__root.tsx`
+- WebSocket context: `src/lib/websocket.tsx` (client connects to `ws://localhost:4000/vt`, retries on disconnect)
+- Dashboard route: `src/routes/index.tsx`
+- Terminal grid: one `ghostty-web` terminal per agent, lazy-attached when run requested
+- Diff UI: per-agent sheet fetches patch from `GET http://localhost:4000/diff?agent=...`
+- Backend: `core/server.ts`
+- Model list source: `core/models.json`
 
-## Structure
+## Backend Notes (`core/server.ts`)
 
-- `src/routes/` - app entry + dashboard UI
-- `src/components/ui/` - shadcn primitives
-- `src/lib/` - websocket + agent pattern helpers
-- `core/` - Bun websocket server + models config
-- `src/styles.css` - theme variables (oklch), dark mode default
+- WS endpoint: `/vt`
+- HTTP endpoint: `/diff` (returns git diff text, includes untracked files)
+- Sandbox root: `~/.hbench`
+- `setup` message clones repo + creates per-agent git worktrees
+- `wipe` message deletes `~/.hbench`
+- Agent launch: spawns CLI command in PTY from that agent's worktree
+- Streams output as base64 WS payloads (`type: "output"`)
+- Handles `input` and `resize` messages per agent
+- Emits setup/wipe status events for toasts
+
+## Repo Structure
+
+- `src/routes/` route components (`__root.tsx`, `index.tsx`)
+- `src/components/ui/` shadcn/base-ui primitives
+- `src/components/theme-provider.tsx` theme state + localStorage persistence
+- `src/lib/websocket.tsx` WS provider/hooks
+- `src/lib/agent-patterns.ts` per-agent card textures
+- `core/server.ts` Bun PTY + git-worktree orchestration
+- `core/models.json` agent -> model options
+- `public/screenshot-2026-02-06.png` current dashboard screenshot
 
 ## UI Guidelines
 
-- Dark theme, monospace for terminals
-- lucide-react icons only
-- Minimal, bold, not generic - focus on tool output
-- Use existing shadcn components before creating new ones
+- Dark-first, monospace-friendly dashboard; light mode also supported
+- Keep terminal output primary; controls compact
+- Use `lucide-react` icons only
+- Reuse existing shadcn/base-ui primitives before new UI abstractions
