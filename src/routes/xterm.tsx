@@ -1,10 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal as XTerm } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { PatchDiff } from '@pierre/diffs/react'
+import { parsePatchFiles } from '@pierre/diffs'
+import { FileDiff } from '@pierre/diffs/react'
 import { Columns2, Play, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import modelsJson from '../../core/models.json'
@@ -601,6 +602,14 @@ function DiffView({
   error: string | null
   patch: string | null
 }) {
+  const files = useMemo(
+    () =>
+      patch
+        ? parsePatchFiles(patch).flatMap((parsedPatch) => parsedPatch.files)
+        : [],
+    [patch],
+  )
+
   if (loading) {
     return <p className="text-muted-foreground">Loading diff...</p>
   }
@@ -610,5 +619,24 @@ function DiffView({
   if (!patch) {
     return <p className="text-muted-foreground">No changes yet.</p>
   }
-  return <PatchDiff patch={patch} options={{ theme: 'pierre-dark' }} />
+
+  if (files.length === 0) {
+    return (
+      <pre className="max-h-full overflow-auto rounded bg-background/60 p-3 text-xs">
+        {patch}
+      </pre>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {files.map((file, index) => (
+        <FileDiff
+          key={file.cacheKey ?? `${file.name}-${index}`}
+          fileDiff={file}
+          options={{ theme: 'pierre-dark' }}
+        />
+      ))}
+    </div>
+  )
 }
