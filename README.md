@@ -2,7 +2,7 @@
 
 CLI agent benchmarker dashboard. Run multiple coding agents on the same task, watch their terminals live, and compare output side by side.
 
-![Harness Bench dashboard with live TUIs](public/screenshot-2026-02-06.png)
+![Harness Bench dashboard with live TUIs](public/screenshot-2026-02-06-dashboard.png)
 
 ## Highlights
 
