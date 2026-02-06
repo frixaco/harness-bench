@@ -8,6 +8,7 @@ CLI agent benchmarker dashboard. Run multiple coding agents on the same task, wa
 
 - Run `amp`, `opencode`, `claude`, `codex`, `pi`, `droid` in parallel
 - WebSocket-driven PTY streaming for live terminal output
+- Explicit global stop path via `POST /stop` with shutdown ladder (`Ctrl-C`, `Ctrl-C`, `SIGTERM`, `SIGKILL`)
 - Per-agent model selectors sourced from the model config
 - Dark, monospace-first UI with `ghostty-web` terminals
 
@@ -27,7 +28,11 @@ bun run dev      # UI + PTY server
 bun run ui       # UI only (Vite on :3000)
 bun run pty      # PTY websocket server on :4000
 bun run build    # production build
+bun run preview  # preview built app
+bun run start    # start output server (.output/server/index.mjs)
 bun run test     # vitest
+bun run lint     # eslint
+bun run format   # prettier
 bun run check    # format + lint
 ```
 
@@ -42,11 +47,11 @@ bun run check    # format + lint
 - Frontend: TanStack Start routes and root shell
 - WebSocket client connects to `ws://localhost:4000/vt`
 - Dashboard UI renders agent cards and live terminals
-- Backend server spawns PTYs and streams base64 output
+- Backend server spawns PTYs, streams base64 output, exposes `/diff` and `/stop`
 - Theme system controls dark/light styles and tokens
 
 ## Roadmap
 
-- Graceful shutdown for PTYs on socket close
-- Run-all and per-agent start/stop improvements
 - Wire model selection into backend runs
+- Add per-agent stop controls (not just global STOP)
+- Persist run metrics/logs for comparison history

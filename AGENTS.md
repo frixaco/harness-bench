@@ -35,8 +35,8 @@ bun run format   # prettier
 
 - Root shell/router: `src/routes/__root.tsx`
 - WebSocket context: `src/lib/websocket.tsx` (client connects to `ws://localhost:4000/vt`, retries on disconnect)
-- Dashboard route: `src/routes/index.tsx`
-- Terminal grid: one `ghostty-web` terminal per agent, lazy-attached when run requested
+- Dashboard routes: `src/routes/index.tsx` (`ghostty-web`) and `src/routes/xterm.tsx` (`xterm.js` variant)
+- Terminal grid: one terminal per agent, lazy-attached when run requested
 - Diff UI: per-agent sheet fetches patch from `GET http://localhost:4000/diff?agent=...`
 - Backend: `core/server.ts`
 - Model list source: `core/models.json`
@@ -44,18 +44,23 @@ bun run format   # prettier
 ## Backend Notes (`core/server.ts`)
 
 - WS endpoint: `/vt`
-- HTTP endpoint: `/diff` (returns git diff text, includes untracked files)
+- HTTP endpoints:
+  - `GET /diff` (returns git diff text, includes untracked files)
+  - `POST /stop` (stops all tracked agent processes)
 - Sandbox root: `~/.hbench`
 - `setup` message clones repo + creates per-agent git worktrees
-- `wipe` message deletes `~/.hbench`
+- `wipe` message stops running agents, then deletes `~/.hbench`
 - Agent launch: spawns CLI command in PTY from that agent's worktree
+- Relaunch of the same agent stops prior tracked process first
 - Streams output as base64 WS payloads (`type: "output"`)
 - Handles `input` and `resize` messages per agent
 - Emits setup/wipe status events for toasts
+- Stop ladder: `Ctrl-C`, `Ctrl-C`, `SIGTERM`, then `SIGKILL` fallback
+- WS close triggers the same process cleanup as `/stop` (fallback safety)
 
 ## Repo Structure
 
-- `src/routes/` route components (`__root.tsx`, `index.tsx`)
+- `src/routes/` route components (`__root.tsx`, `index.tsx`, `xterm.tsx`)
 - `src/components/ui/` shadcn/base-ui primitives
 - `src/components/theme-provider.tsx` theme state + localStorage persistence
 - `src/lib/websocket.tsx` WS provider/hooks

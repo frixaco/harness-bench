@@ -36,27 +36,52 @@ export const Route = createFileRoute('/xterm')({
 
 const agentModelMapping = modelsJson as Record<string, Array<string>>
 const agents = Object.keys(agentModelMapping)
-const defaultRunRequested = agents.reduce(
-  (a, c) => {
-    a[c] = false
-    return a
-  },
-  {} as Record<string, boolean>,
-)
+const createRunRequestedState = () =>
+  agents.reduce(
+    (a, c) => {
+      a[c] = false
+      return a
+    },
+    {} as Record<string, boolean>,
+  )
 
 function App() {
   const [prompt, setPrompt] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [setupRepoUrl, setSetupRepoUrl] = useState<string | null>(null)
   const ws = useWS()
-  const [runRequested, setRunRequested] =
-    useState<Record<string, boolean>>(defaultRunRequested)
+  const [runRequested, setRunRequested] = useState<Record<string, boolean>>(
+    createRunRequestedState(),
+  )
+  const [stopping, setStopping] = useState(false)
   const setupToastIdRef = useRef<string | number | null>(null)
   const wipeToastIdRef = useRef<string | number | null>(null)
   const trimmedRepoUrl = repoUrl.trim()
   const isRepoSetup =
     trimmedRepoUrl.length > 0 && setupRepoUrl === trimmedRepoUrl
   console.log({ prompt })
+
+  const stopAllAgents = useCallback(async () => {
+    if (stopping) return
+    setStopping(true)
+    try {
+      const stopBase = `${window.location.protocol}//${window.location.hostname}:4000`
+      const response = await fetch(`${stopBase}/stop`, {
+        method: 'POST',
+      })
+      if (!response.ok) {
+        const message = (await response.text()).trim()
+        throw new Error(message || 'Failed to stop agents')
+      }
+      toast.success('Stopped all agents')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      toast.error('Stop failed', { description: message })
+    } finally {
+      setRunRequested(createRunRequestedState())
+      setStopping(false)
+    }
+  }, [stopping])
 
   useEffect(() => {
     if (!ws.conn) return
@@ -272,9 +297,9 @@ function App() {
           className="font-semibold uppercase px-4 w-24"
           size="lg"
           variant="destructive"
+          disabled={stopping}
           onClick={() => {
-            ws.conn?.close()
-            setRunRequested(defaultRunRequested)
+            void stopAllAgents()
           }}
         >
           STOP
@@ -315,7 +340,6 @@ function TUI({
   const [diffPatch, setDiffPatch] = useState<string | null>(null)
   const [diffError, setDiffError] = useState<string | null>(null)
   const [diffLoading, setDiffLoading] = useState(false)
-  const [diffChecked, setDiffChecked] = useState(false)
   const [diffRepoUrl, setDiffRepoUrl] = useState<string | null>(null)
 
   useEffect(() => {
@@ -481,7 +505,6 @@ function TUI({
     async (repoUrlOverride?: string) => {
       setDiffLoading(true)
       setDiffError(null)
-      setDiffChecked(false)
       try {
         const repoUrlParam = repoUrlOverride ?? diffRepoUrl ?? repoUrl
         const diffBase = `${window.location.protocol}//${window.location.hostname}:4000`
@@ -505,7 +528,6 @@ function TUI({
         setDiffPatch(null)
       } finally {
         setDiffLoading(false)
-        setDiffChecked(true)
       }
     },
     [diffRepoUrl, name, repoUrl],

@@ -10,6 +10,14 @@ const agents = Object.keys(agentModeMapping)
 const defaultCols = 80
 const defaultRows = 24
 const sandboxRoot = path.join(os.homedir(), '.hbench')
+const corsHeaders = { 'access-control-allow-origin': '*' }
+const stopDelayMs = {
+  interrupt: 250,
+  secondInterrupt: 350,
+  term: 1200,
+  kill: 500,
+}
+let stopAllInFlight: Promise<void> | null = null
 
 const agentBranchName = (agent: string) => `agent/${agent}`
 
@@ -118,6 +126,95 @@ const sendAgentNotice = (
   )
 }
 
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms)
+  })
+
+const waitForExit = async (proc: Bun.Subprocess, timeoutMs: number) => {
+  if (proc.exitCode !== null) return true
+  await Promise.race([proc.exited, wait(timeoutMs)])
+  return proc.exitCode !== null
+}
+
+const stopTrackedProcess = async (agent: string, proc: Bun.Subprocess) => {
+  if (proc.exitCode === null) {
+    try {
+      proc.terminal?.write('\u0003')
+    } catch (error) {
+      console.warn('Failed to send interrupt', agent, error)
+    }
+
+    const exitedAfterInterrupt = await waitForExit(proc, stopDelayMs.interrupt)
+    if (!exitedAfterInterrupt && proc.exitCode === null) {
+      try {
+        proc.terminal?.write('\u0003')
+      } catch (error) {
+        console.warn('Failed to send second interrupt', agent, error)
+      }
+    }
+
+    const exitedAfterSecondInterrupt = await waitForExit(
+      proc,
+      stopDelayMs.secondInterrupt,
+    )
+    if (!exitedAfterSecondInterrupt && proc.exitCode === null) {
+      try {
+        proc.kill('SIGTERM')
+      } catch (error) {
+        console.warn('Failed to send SIGTERM', agent, error)
+      }
+    }
+
+    const exitedAfterTerm = await waitForExit(proc, stopDelayMs.term)
+    if (!exitedAfterTerm && proc.exitCode === null) {
+      try {
+        proc.kill('SIGKILL')
+      } catch (error) {
+        console.warn('Failed to send SIGKILL', agent, error)
+      }
+      await waitForExit(proc, stopDelayMs.kill)
+    }
+  }
+
+  try {
+    proc.terminal?.close()
+  } catch (error) {
+    console.warn('Failed to close terminal', agent, error)
+  }
+
+  if (procs.get(agent) === proc) {
+    procs.delete(agent)
+  }
+}
+
+const stopAgentProcess = async (agent: string) => {
+  const proc = procs.get(agent)
+  if (!proc) return
+  await stopTrackedProcess(agent, proc)
+}
+
+const stopAllProcesses = async () => {
+  if (stopAllInFlight) {
+    await stopAllInFlight
+    return
+  }
+
+  stopAllInFlight = (async () => {
+    const entries = Array.from(procs.entries())
+    await Promise.all(
+      entries.map(([agent, proc]) => stopTrackedProcess(agent, proc)),
+    )
+    procs.clear()
+  })()
+
+  try {
+    await stopAllInFlight
+  } finally {
+    stopAllInFlight = null
+  }
+}
+
 const wipeSandbox = () => {
   if (!existsSync(sandboxRoot)) return
   rmSync(sandboxRoot, { force: true, recursive: true })
@@ -164,10 +261,42 @@ Bun.serve({
   port: 4000,
   fetch(req, server) {
     const url = new URL(req.url)
+    if (url.pathname === '/stop' && req.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: {
+          ...corsHeaders,
+          'access-control-allow-methods': 'POST, OPTIONS',
+          'access-control-allow-headers': 'content-type',
+        },
+      })
+    }
+    if (url.pathname === '/stop' && req.method === 'POST') {
+      return stopAllProcesses()
+        .then(
+          () =>
+            new Response(JSON.stringify({ status: 'success' }), {
+              headers: {
+                ...corsHeaders,
+                'content-type': 'application/json; charset=utf-8',
+              },
+            }),
+        )
+        .catch((error) => {
+          const message =
+            error instanceof Error ? error.message : 'Unknown error'
+          return new Response(JSON.stringify({ status: 'error', message }), {
+            status: 500,
+            headers: {
+              ...corsHeaders,
+              'content-type': 'application/json; charset=utf-8',
+            },
+          })
+        })
+    }
     if (url.pathname === '/diff' && req.method === 'OPTIONS') {
       return new Response(null, {
         headers: {
-          'access-control-allow-origin': '*',
+          ...corsHeaders,
           'access-control-allow-methods': 'GET, OPTIONS',
           'access-control-allow-headers': 'content-type',
         },
@@ -178,7 +307,7 @@ Bun.serve({
       if (!agent || !agents.includes(agent)) {
         return new Response('Unknown agent', {
           status: 400,
-          headers: { 'access-control-allow-origin': '*' },
+          headers: corsHeaders,
         })
       }
       let cwd = agentWorktrees.get(agent)
@@ -196,7 +325,7 @@ Bun.serve({
       if (!cwd) {
         return new Response('No worktree configured. Run SETUP first.', {
           status: 400,
-          headers: { 'access-control-allow-origin': '*' },
+          headers: corsHeaders,
         })
       }
       return buildWorktreeDiff(cwd)
@@ -205,7 +334,7 @@ Bun.serve({
             new Response(diff || '', {
               headers: {
                 'content-type': 'text/plain; charset=utf-8',
-                'access-control-allow-origin': '*',
+                ...corsHeaders,
               },
             }),
         )
@@ -214,7 +343,7 @@ Bun.serve({
             error instanceof Error ? error.message : 'Unknown error'
           return new Response(message, {
             status: 500,
-            headers: { 'access-control-allow-origin': '*' },
+            headers: corsHeaders,
           })
         })
     }
@@ -228,7 +357,7 @@ Bun.serve({
       console.log(message)
 
       if (typeof message === 'string' && agents.includes(message)) {
-        let agent = message
+        const agent = message
         const cwd = agentWorktrees.get(agent)
         if (!cwd) {
           console.warn('Missing worktree for agent', agent)
@@ -239,16 +368,19 @@ Bun.serve({
           )
           return
         }
-        let proc = Bun.spawn([agent], {
+        await stopAgentProcess(agent)
+        const proc = Bun.spawn([agent], {
           cwd,
           env: { ...process.env },
-          onExit(proc, exitCode, signalCode, error) {
-            // exit handler
+          onExit(exitedProc, _exitCode, _signalCode, _error) {
+            if (procs.get(agent) === exitedProc) {
+              procs.delete(agent)
+            }
           },
           terminal: {
             cols: defaultCols,
             rows: defaultRows,
-            data(terminal, data) {
+            data(_terminal, data) {
               const encoded = Buffer.from(data).toString('base64')
               ws.send(
                 JSON.stringify({
@@ -267,12 +399,13 @@ Bun.serve({
           if (payload.type === 'wipe') {
             sendStatus(ws, 'wipe-status', 'start')
             try {
+              await stopAllProcesses()
               wipeSandbox()
               sendStatus(ws, 'wipe-status', 'success')
             } catch (error) {
-              const message =
+              const errorMessage =
                 error instanceof Error ? error.message : 'Unknown error'
-              sendStatus(ws, 'wipe-status', 'error', { message })
+              sendStatus(ws, 'wipe-status', 'error', { message: errorMessage })
             }
             return
           }
@@ -289,9 +422,12 @@ Bun.serve({
               await ensureAgentWorktrees(repoUrl)
               sendStatus(ws, 'setup-status', 'success', { repoUrl })
             } catch (error) {
-              const message =
+              const errorMessage =
                 error instanceof Error ? error.message : 'Unknown error'
-              sendStatus(ws, 'setup-status', 'error', { repoUrl, message })
+              sendStatus(ws, 'setup-status', 'error', {
+                repoUrl,
+                message: errorMessage,
+              })
               console.warn('Setup failed', error)
             }
             return
@@ -322,17 +458,16 @@ Bun.serve({
         procs.get(agent)?.terminal?.write(input)
       }
     },
-    open(ws) {
+    open(_ws) {
       console.log('opening')
     },
-    close(ws, code, message) {
+    close(_ws, _code, _message) {
       console.log('closing')
-
-      for (const [_agent, proc] of procs) {
-        proc.terminal?.close()
-      }
+      void stopAllProcesses().catch((error) => {
+        console.warn('Failed to stop processes on socket close', error)
+      })
     },
-    drain(ws) {
+    drain(_ws) {
       console.log('draining')
     },
   },
