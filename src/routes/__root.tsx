@@ -9,6 +9,7 @@ import { TanStackDevtools } from '@tanstack/react-devtools'
 
 import appCss from '../styles.css?url'
 import { ThemeProvider } from '../components/theme-provider'
+import { Toaster } from '../components/ui/sonner'
 
 import { WebSocketProvider } from '@/lib/websocket'
 
@@ -70,6 +71,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <ThemeProvider defaultTheme="dark">{children}</ThemeProvider>
+        <Toaster />
         <TanStackDevtools
           config={{
             position: 'bottom-right',

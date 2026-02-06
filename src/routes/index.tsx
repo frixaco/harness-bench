@@ -3,9 +3,11 @@ import { useEffect, useRef, useState } from 'react'
 import { Terminal, init } from 'ghostty-web'
 import { MultiFileDiff } from '@pierre/diffs/react'
 import { Columns2, Play, RefreshCcw } from 'lucide-react'
+import { toast } from 'sonner'
 import modelsJson from '../../core/models.json'
 import type { FileContents } from '@pierre/diffs/react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { useWS } from '@/lib/websocket'
 import {
   Select,
@@ -41,13 +43,83 @@ const defaultRunRequested = agents.reduce(
 
 function App() {
   const [prompt, setPrompt] = useState('')
+  const [repoUrl, setRepoUrl] = useState('')
   const ws = useWS()
   const [runRequested, setRunRequested] =
     useState<Record<string, boolean>>(defaultRunRequested)
+  const setupToastIdRef = useRef<string | number | null>(null)
+  const wipeToastIdRef = useRef<string | number | null>(null)
   console.log({ prompt })
+
+  useEffect(() => {
+    if (!ws.conn) return
+
+    const handleStatus = (event: MessageEvent) => {
+      if (typeof event.data !== 'string') return
+      try {
+        const payload = JSON.parse(event.data)
+        if (payload?.type === 'setup-status') {
+          if (payload.status === 'start') {
+            setupToastIdRef.current = toast.loading('Setting up worktrees...', {
+              description: payload.repoUrl,
+            })
+            return
+          }
+          if (payload.status === 'success') {
+            toast.success('Setup complete', {
+              id: setupToastIdRef.current ?? undefined,
+              description: payload.repoUrl,
+            })
+            return
+          }
+          if (payload.status === 'error') {
+            toast.error('Setup failed', {
+              id: setupToastIdRef.current ?? undefined,
+              description: payload.message ?? payload.repoUrl,
+            })
+          }
+        }
+
+        if (payload?.type === 'wipe-status') {
+          if (payload.status === 'start') {
+            wipeToastIdRef.current = toast.loading('Wiping ~/.hbench...')
+            return
+          }
+          if (payload.status === 'success') {
+            toast.success('Sandbox wiped', {
+              id: wipeToastIdRef.current ?? undefined,
+            })
+            return
+          }
+          if (payload.status === 'error') {
+            toast.error('Wipe failed', {
+              id: wipeToastIdRef.current ?? undefined,
+              description: payload.message,
+            })
+          }
+        }
+      } catch (error) {
+        console.warn('Invalid status payload', error)
+      }
+    }
+
+    ws.conn.addEventListener('message', handleStatus)
+    return () => {
+      ws.conn?.removeEventListener('message', handleStatus)
+    }
+  }, [ws.conn])
 
   return (
     <div className="flex w-full flex-col items-center gap-8 text-sm pt-24 px-24 font-mono">
+      <div className="flex flex-col md:flex-row gap-2 justify-center-center w-full max-w-3xl">
+        <Input
+          value={repoUrl}
+          onChange={(e) => setRepoUrl(e.currentTarget.value)}
+          placeholder="GitHub repo URL"
+          className="w-full"
+        />
+      </div>
+
       <div className="flex flex-col md:flex-row gap-2 justify-center-center">
         <Textarea
           value={prompt}
@@ -102,10 +174,59 @@ function App() {
         <Button
           className="font-semibold uppercase px-4 w-24"
           size="lg"
+          disabled={repoUrl.trim().length === 0}
+          onClick={() => {
+            const trimmedRepoUrl = repoUrl.trim()
+            ws.send(
+              JSON.stringify({
+                type: 'setup',
+                repoUrl: trimmedRepoUrl,
+              }),
+            )
+          }}
+        >
+          SETUP
+        </Button>
+        <Button
+          className="font-semibold uppercase px-4 w-24"
+          size="lg"
+          variant="destructive"
+          onClick={() => {
+            ws.send(
+              JSON.stringify({
+                type: 'wipe',
+              }),
+            )
+          }}
+        >
+          WIPE
+        </Button>
+        <Button
+          className="font-semibold uppercase px-4 w-24"
+          size="lg"
           disabled={prompt.length < 2}
           onClick={() => {}}
         >
           RUN
+        </Button>
+
+        <Button
+          className="font-semibold uppercase px-4 w-24"
+          size="lg"
+          onClick={() => {
+            agents.forEach((agent) => ws.send(agent))
+            setRunRequested(
+              agents.reduce(
+                (acc, agent) => {
+                  acc[agent] = true
+                  return acc
+                },
+                {} as Record<string, boolean>,
+              ),
+            )
+          }}
+        >
+          LAUNCH
         </Button>
 
         <Button
@@ -295,7 +416,7 @@ function TUI({ name, runRequested }: { name: string; runRequested: boolean }) {
   }, [runRequested, ws.conn])
 
   return (
-    <div className="h-120 w-full max-w-lg">
+    <div className="h-120 flex flex-col w-full max-w-lg">
       <div className="border rounded-t-lg px-4 py-2 flex justify-between items-center">
         <p className="capitalize">{name}</p>
 
@@ -327,7 +448,7 @@ function TUI({ name, runRequested }: { name: string; runRequested: boolean }) {
 
       <div
         ref={termDivContainer}
-        className="h-full w-full caret-background border"
+        className="flex-1 rounded-b-lg w-full caret-background border"
       />
     </div>
   )

@@ -35,6 +35,7 @@ bun run check    # format + lint
 
 - Bun
 - Agent CLIs installed and available on `PATH`: `amp`, `droid`, `pi`, `codex`, `claude`, `opencode`
+- Git
 
 ## Architecture
 
