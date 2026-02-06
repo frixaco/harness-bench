@@ -1,6 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Terminal, init } from 'ghostty-web'
+import { FitAddon } from '@xterm/addon-fit'
+import { WebglAddon } from '@xterm/addon-webgl'
+import { Terminal as XTerm } from '@xterm/xterm'
+import '@xterm/xterm/css/xterm.css'
 import { PatchDiff } from '@pierre/diffs/react'
 import { Columns2, Play, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
@@ -27,7 +30,7 @@ import {
 } from '@/components/ui/sheet'
 import { getAgentPattern } from '@/lib/agent-patterns'
 
-export const Route = createFileRoute('/')({
+export const Route = createFileRoute('/xterm')({
   component: App,
 })
 
@@ -306,7 +309,8 @@ function TUI({
 }) {
   const ws = useWS()
   const termDivContainer = useRef<HTMLDivElement | null>(null)
-  const termInstance = useRef<Terminal | null>(null)
+  const termInstance = useRef<XTerm | null>(null)
+  const fitAddonRef = useRef<FitAddon | null>(null)
   const [diffOpen, setDiffOpen] = useState(false)
   const [diffPatch, setDiffPatch] = useState<string | null>(null)
   const [diffError, setDiffError] = useState<string | null>(null)
@@ -335,7 +339,7 @@ function TUI({
       }
     }
 
-    const attachSocket = (conn: WebSocket, term: Terminal) => {
+    const attachSocket = (conn: WebSocket, term: XTerm) => {
       teardownSocket()
       socket = conn
       dataDisposable = term.onData((data) => {
@@ -393,24 +397,19 @@ function TUI({
       )
     }
 
-    const fitTerminal = (term: Terminal) => {
-      const host = termDivContainer.current
-      if (!host || !term.renderer) return
-      const metrics = term.renderer.getMetrics()
-      if (!metrics.width || !metrics.height) return
-      const cols = Math.max(2, Math.floor(host.clientWidth / metrics.width))
-      const rows = Math.max(1, Math.floor(host.clientHeight / metrics.height))
-      term.resize(cols, rows)
+    const fitTerminal = () => {
+      fitAddonRef.current?.fit()
     }
 
-    async function ensureTerminalSetup() {
+    function ensureTerminalSetup() {
       const host = termDivContainer.current
       if (!host || termInstance.current) return
-      await init()
-      if (!active) return
 
-      const term = new Terminal({
+      const term = new XTerm({
         fontSize: 14,
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        cursorBlink: true,
         theme: {
           background: '#16181a',
           foreground: '#ffffff',
@@ -432,20 +431,28 @@ function TUI({
           brightWhite: '#ffffff',
         },
       })
+      const fitAddon = new FitAddon()
+      term.loadAddon(fitAddon)
+      fitAddonRef.current = fitAddon
+      try {
+        term.loadAddon(new WebglAddon())
+      } catch (error) {
+        console.warn('WebGL addon unavailable', error)
+      }
       term.open(host)
       termInstance.current = term
-      fitTerminal(term)
+      fitTerminal()
 
       resizeObserver = new ResizeObserver(() => {
         if (termInstance.current) {
-          fitTerminal(termInstance.current)
+          fitTerminal()
         }
       })
       resizeObserver.observe(host)
     }
 
-    async function ensureSocketAttached() {
-      await ensureTerminalSetup()
+    function ensureSocketAttached() {
+      ensureTerminalSetup()
       if (!active || !ws.conn || !termInstance.current) return
       attachSocket(ws.conn, termInstance.current)
 
@@ -453,7 +460,7 @@ function TUI({
         sendResize(size.cols, size.rows)
       })
 
-      fitTerminal(termInstance.current)
+      fitTerminal()
       sendResize(termInstance.current.cols, termInstance.current.rows)
     }
 
@@ -464,6 +471,7 @@ function TUI({
     return () => {
       active = false
       teardownSocket()
+      fitAddonRef.current = null
       termInstance.current?.dispose()
       termInstance.current = null
     }

@@ -9,8 +9,14 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as XtermRouteImport } from './routes/xterm'
 import { Route as IndexRouteImport } from './routes/index'
 
+const XtermRoute = XtermRouteImport.update({
+  id: '/xterm',
+  path: '/xterm',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -19,28 +25,39 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/xterm': typeof XtermRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/xterm': typeof XtermRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/xterm': typeof XtermRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/xterm'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/xterm'
+  id: '__root__' | '/' | '/xterm'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  XtermRoute: typeof XtermRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/xterm': {
+      id: '/xterm'
+      path: '/xterm'
+      fullPath: '/xterm'
+      preLoaderRoute: typeof XtermRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -53,6 +70,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  XtermRoute: XtermRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
