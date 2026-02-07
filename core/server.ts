@@ -444,10 +444,22 @@ Bun.serve({
             const agent = payload.agent
             if (!agent || typeof agent !== 'string') return
             if (!agents.includes(agent)) return
-            const cols = Number(payload.cols)
-            const rows = Number(payload.rows)
-            if (!Number.isFinite(cols) || !Number.isFinite(rows)) return
-            procs.get(agent)?.terminal?.resize(cols, rows)
+            const cols = Math.trunc(Number(payload.cols))
+            const rows = Math.trunc(Number(payload.rows))
+            if (!Number.isSafeInteger(cols) || !Number.isSafeInteger(rows))
+              return
+            if (cols < 2 || rows < 1) return
+            if (cols > 2000 || rows > 1000) return
+            try {
+              procs.get(agent)?.terminal?.resize(cols, rows)
+            } catch (error) {
+              console.warn('Failed to resize terminal', {
+                agent,
+                cols,
+                rows,
+                error,
+              })
+            }
             return
           }
         } catch (error) {

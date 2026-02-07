@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as XtermRouteImport } from './routes/xterm'
+import { Route as ResttyRouteImport } from './routes/restty'
 import { Route as IndexRouteImport } from './routes/index'
 
 const XtermRoute = XtermRouteImport.update({
   id: '/xterm',
   path: '/xterm',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResttyRoute = ResttyRouteImport.update({
+  id: '/restty',
+  path: '/restty',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -25,27 +31,31 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/restty': typeof ResttyRoute
   '/xterm': typeof XtermRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/restty': typeof ResttyRoute
   '/xterm': typeof XtermRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/restty': typeof ResttyRoute
   '/xterm': typeof XtermRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/xterm'
+  fullPaths: '/' | '/restty' | '/xterm'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/xterm'
-  id: '__root__' | '/' | '/xterm'
+  to: '/' | '/restty' | '/xterm'
+  id: '__root__' | '/' | '/restty' | '/xterm'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ResttyRoute: typeof ResttyRoute
   XtermRoute: typeof XtermRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/xterm'
       fullPath: '/xterm'
       preLoaderRoute: typeof XtermRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/restty': {
+      id: '/restty'
+      path: '/restty'
+      fullPath: '/restty'
+      preLoaderRoute: typeof ResttyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ResttyRoute: ResttyRoute,
   XtermRoute: XtermRoute,
 }
 export const routeTree = rootRouteImport

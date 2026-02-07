@@ -1,14 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FitAddon } from '@xterm/addon-fit'
-import { WebglAddon } from '@xterm/addon-webgl'
-import { Terminal as XTerm } from '@xterm/xterm'
-import '@xterm/xterm/css/xterm.css'
+import { Restty } from 'restty'
 import { parsePatchFiles } from '@pierre/diffs'
 import { FileDiff } from '@pierre/diffs/react'
 import { Columns2, Play, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import modelsJson from '../../core/models.json'
+import type { PtyConnectOptions, PtyTransport } from 'restty'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useWS } from '@/lib/websocket'
@@ -31,7 +29,7 @@ import {
 } from '@/components/ui/sheet'
 import { getAgentPattern } from '@/lib/agent-patterns'
 
-export const Route = createFileRoute('/xterm')({
+export const Route = createFileRoute('/restty')({
   component: App,
 })
 
@@ -178,6 +176,7 @@ function App() {
       <div className="flex w-full max-w-4xl gap-2 flex-wrap justify-start">
         {agents.map((agent) => (
           <div
+            key={agent}
             className="flex flex-col gap-1 items-center rounded-lg p-1 border"
             style={getAgentPattern(agent)}
           >
@@ -266,7 +265,6 @@ function App() {
         >
           LAUNCH
         </Button>
-
         <Button
           className="font-semibold uppercase px-4 w-24"
           size="lg"
@@ -338,8 +336,7 @@ function TUI({
 }) {
   const ws = useWS()
   const termDivContainer = useRef<HTMLDivElement | null>(null)
-  const termInstance = useRef<XTerm | null>(null)
-  const fitAddonRef = useRef<FitAddon | null>(null)
+  const resttyInstance = useRef<Restty | null>(null)
   const [diffOpen, setDiffOpen] = useState(false)
   const [diffPatch, setDiffPatch] = useState<string | null>(null)
   const [diffError, setDiffError] = useState<string | null>(null)
@@ -348,162 +345,242 @@ function TUI({
 
   useEffect(() => {
     let active = true
-    let dataDisposable: { dispose: () => void } | null = null
-    let resizeDisposable: { dispose: () => void } | null = null
-    let resizeObserver: ResizeObserver | null = null
-    let socket: WebSocket | null = null
+    let transport: PtyTransport | null = null
+    let initPromise: Promise<void> | null = null
+    const MIN_COLS = 2
+    const MIN_ROWS = 1
+    const MAX_COLS = 2000
+    const MAX_ROWS = 1000
 
-    const teardownSocket = () => {
-      dataDisposable?.dispose()
-      dataDisposable = null
-      resizeDisposable?.dispose()
-      resizeDisposable = null
-      resizeObserver?.disconnect()
-      resizeObserver = null
-      if (socket) {
-        socket.removeEventListener('message', handleMessage)
-        socket.removeEventListener('close', handleClose)
-        socket = null
+    const decodeBase64 = (data: string) => {
+      const decoded = atob(data)
+      const bytes = new Uint8Array(decoded.length)
+      for (let i = 0; i < decoded.length; i += 1) {
+        bytes[i] = decoded.charCodeAt(i)
       }
+      return bytes
     }
 
-    const attachSocket = (conn: WebSocket, term: XTerm) => {
-      teardownSocket()
-      socket = conn
-      dataDisposable = term.onData((data) => {
-        console.log({ data })
-        socket?.send(
-          JSON.stringify({
-            type: 'input',
-            agent: name,
-            data,
-          }),
-        )
-      })
-      socket.addEventListener('message', handleMessage)
-      socket.addEventListener('close', handleClose)
+    const normalizeSize = (cols: number, rows: number) => {
+      const safeCols = Math.trunc(cols)
+      const safeRows = Math.trunc(rows)
+      if (!Number.isFinite(safeCols) || !Number.isFinite(safeRows)) return null
+      if (safeCols < MIN_COLS || safeRows < MIN_ROWS) return null
+      if (safeCols > MAX_COLS || safeRows > MAX_ROWS) return null
+      return { cols: safeCols, rows: safeRows }
     }
 
-    const handleMessage = (event: MessageEvent) => {
-      const term = termInstance.current
-      if (!term) return
-      const payload = event.data
-      if (typeof payload === 'string') {
+    const createTransport = (conn: WebSocket): PtyTransport => {
+      let connected = false
+      let callbacks: PtyConnectOptions['callbacks'] | null = null
+      let decoder: TextDecoder | null = null
+
+      function handleMessage(event: MessageEvent) {
+        if (!connected || !callbacks || !decoder) return
+        if (typeof event.data !== 'string') return
+
         try {
-          const message = JSON.parse(payload)
+          const message = JSON.parse(event.data) as {
+            type?: string
+            agent?: string
+            data?: string
+          }
           if (message.type !== 'output') return
           if (message.agent !== name) return
           if (typeof message.data !== 'string') return
-          const decoded = atob(message.data)
-          const bytes = new Uint8Array(decoded.length)
-          for (let i = 0; i < decoded.length; i += 1) {
-            bytes[i] = decoded.charCodeAt(i)
+
+          const text = decoder.decode(decodeBase64(message.data), {
+            stream: true,
+          })
+          if (text) {
+            callbacks.onData?.(text)
           }
-          term.write(bytes)
         } catch (error) {
           console.warn('Invalid output payload', error)
         }
-      } else if (payload instanceof ArrayBuffer) {
-        term.write(new Uint8Array(payload))
       }
-    }
 
-    const handleClose = () => {
-      termInstance.current?.dispose()
-      termInstance.current = null
-    }
+      function teardown(emitDisconnect: boolean) {
+        const currentCallbacks = callbacks
+        const currentDecoder = decoder
+        const wasConnected = connected
 
-    const sendResize = (cols: number, rows: number) => {
-      if (!ws.conn || !ws.ready) return
-      ws.send(
-        JSON.stringify({
-          type: 'resize',
-          agent: name,
-          cols,
-          rows,
-        }),
-      )
-    }
+        conn.removeEventListener('message', handleMessage)
+        conn.removeEventListener('close', handleClose)
 
-    const fitTerminal = () => {
-      fitAddonRef.current?.fit()
+        connected = false
+        callbacks = null
+        decoder = null
+
+        if (currentDecoder) {
+          const tail = currentDecoder.decode()
+          if (tail) {
+            currentCallbacks?.onData?.(tail)
+          }
+        }
+
+        if (emitDisconnect && wasConnected) {
+          currentCallbacks?.onDisconnect?.()
+        }
+      }
+
+      function handleClose() {
+        teardown(true)
+      }
+
+      return {
+        connect: ({ callbacks: nextCallbacks, cols, rows }) => {
+          if (connected) return
+          callbacks = nextCallbacks
+          decoder = new TextDecoder()
+          connected = true
+          conn.addEventListener('message', handleMessage)
+          conn.addEventListener('close', handleClose)
+          callbacks.onConnect?.()
+          const size = normalizeSize(cols ?? 0, rows ?? 0)
+          if (size && conn.readyState === WebSocket.OPEN) {
+            conn.send(
+              JSON.stringify({
+                type: 'resize',
+                agent: name,
+                cols: size.cols,
+                rows: size.rows,
+              }),
+            )
+          }
+        },
+        disconnect: () => {
+          if (!connected) return
+          teardown(true)
+        },
+        sendInput: (data: string) => {
+          if (!connected || conn.readyState !== WebSocket.OPEN) return false
+          conn.send(
+            JSON.stringify({
+              type: 'input',
+              agent: name,
+              data,
+            }),
+          )
+          return true
+        },
+        resize: (cols: number, rows: number) => {
+          if (!connected || conn.readyState !== WebSocket.OPEN) return false
+          const size = normalizeSize(cols, rows)
+          if (!size) return false
+          conn.send(
+            JSON.stringify({
+              type: 'resize',
+              agent: name,
+              cols: size.cols,
+              rows: size.rows,
+            }),
+          )
+          return true
+        },
+        isConnected: () => connected && conn.readyState === WebSocket.OPEN,
+        destroy: () => {
+          teardown(false)
+        },
+      }
     }
 
     function ensureTerminalSetup() {
       const host = termDivContainer.current
-      if (!host || termInstance.current) return
+      if (!host || resttyInstance.current || !ws.conn) return
 
-      const term = new XTerm({
-        fontSize: 14,
-        fontFamily:
-          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        cursorBlink: true,
-        theme: {
-          background: '#16181a',
-          foreground: '#ffffff',
-          black: '#16181a',
-          red: '#ff6e5e',
-          green: '#5eff6c',
-          yellow: '#f1ff5e',
-          blue: '#5ea1ff',
-          magenta: '#ff5ef1',
-          cyan: '#5ef1ff',
-          white: '#ffffff',
-          brightBlack: '#3c4048',
-          brightRed: '#ffbd5e',
-          brightGreen: '#5eff6c',
-          brightYellow: '#f1ff5e',
-          brightBlue: '#5ea1ff',
-          brightMagenta: '#ff5ea0',
-          brightCyan: '#5ef1ff',
-          brightWhite: '#ffffff',
+      transport = createTransport(ws.conn)
+      resttyInstance.current = new Restty({
+        root: host,
+        autoInit: false,
+        shortcuts: false,
+        defaultContextMenu: false,
+        paneStyles: {
+          splitBackground: '#16181a',
+          paneBackground: '#16181a',
+          inactivePaneOpacity: 1,
+          activePaneOpacity: 1,
+          opacityTransitionMs: 100,
+          dividerThicknessPx: 1,
+        },
+        fontSources: [
+          {
+            type: 'local',
+            matchers: [
+              'SF Mono',
+              'Menlo',
+              'Monaco',
+              'Consolas',
+              'JetBrains Mono',
+              'Fira Code',
+            ],
+            required: true,
+          },
+          {
+            type: 'local',
+            matchers: [
+              'Symbols Nerd Font Mono',
+              'Symbols Nerd Font',
+              'Noto Sans Symbols 2',
+              'Apple Color Emoji',
+              'Segoe UI Emoji',
+            ],
+          },
+        ],
+        appOptions: {
+          renderer: 'webgl2',
+          fontSize: 14,
+          ptyTransport: transport,
         },
       })
-      const fitAddon = new FitAddon()
-      term.loadAddon(fitAddon)
-      fitAddonRef.current = fitAddon
-      try {
-        term.loadAddon(new WebglAddon())
-      } catch (error) {
-        console.warn('WebGL addon unavailable', error)
-      }
-      term.open(host)
-      termInstance.current = term
-      fitTerminal()
-
-      resizeObserver = new ResizeObserver(() => {
-        if (termInstance.current) {
-          fitTerminal()
-        }
-      })
-      resizeObserver.observe(host)
     }
 
     function ensureSocketAttached() {
       ensureTerminalSetup()
-      if (!active || !ws.conn || !termInstance.current) return
-      attachSocket(ws.conn, termInstance.current)
+      if (!active || !resttyInstance.current) return
+      const instance = resttyInstance.current
+      const pane = instance.getActivePane()
+      if (!pane) return
 
-      resizeDisposable = termInstance.current.onResize((size) => {
-        sendResize(size.cols, size.rows)
-      })
+      if (!initPromise) {
+        initPromise = pane.app
+          .init()
+          .then(() => {
+            if (resttyInstance.current !== instance) return
+            instance.updateSize(true)
+          })
+          .catch((error) => {
+            console.warn('Failed to initialize restty pane', error)
+          })
+      }
 
-      fitTerminal()
-      sendResize(termInstance.current.cols, termInstance.current.rows)
+      try {
+        if (!instance.isPtyConnected()) {
+          instance.connectPty()
+        }
+      } catch (error) {
+        console.warn('Failed to connect restty transport', error)
+      }
     }
 
-    if (runRequested) {
-      ensureSocketAttached()
+    if (runRequested && ws.conn) {
+      void ensureSocketAttached()
     }
 
     return () => {
       active = false
-      teardownSocket()
-      fitAddonRef.current = null
-      termInstance.current?.dispose()
-      termInstance.current = null
+      try {
+        resttyInstance.current?.disconnectPty()
+      } catch {
+        // ignore disconnect failures during teardown
+      }
+      resttyInstance.current?.destroy()
+      resttyInstance.current = null
+      transport?.destroy?.()
+      transport = null
+      initPromise = null
     }
-  }, [runRequested, ws.conn])
+  }, [name, runRequested, ws.conn])
 
   const fetchDiff = useCallback(
     async (repoUrlOverride?: string) => {
