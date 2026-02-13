@@ -11,6 +11,8 @@ const defaultCols = 80
 const defaultRows = 24
 const sandboxRoot = path.join(os.homedir(), '.hbench')
 const corsHeaders = { 'access-control-allow-origin': '*' }
+const reviewMaxTokens = 2_400
+const openRouterChatUrl = 'https://openrouter.ai/api/v1/chat/completions'
 const stopDelayMs = {
   interrupt: 250,
   secondInterrupt: 350,
@@ -18,6 +20,28 @@ const stopDelayMs = {
   kill: 500,
 }
 let stopAllInFlight: Promise<void> | null = null
+
+type ReviewMessage = {
+  role: 'system' | 'user'
+  content: string
+}
+
+type ReviewReasoningEffort =
+  | 'xhigh'
+  | 'high'
+  | 'medium'
+  | 'low'
+  | 'minimal'
+  | 'none'
+
+const reviewReasoningEfforts = new Set<ReviewReasoningEffort>([
+  'xhigh',
+  'high',
+  'medium',
+  'low',
+  'minimal',
+  'none',
+])
 
 const agentBranchName = (agent: string) => `agent/${agent}`
 
@@ -257,6 +281,235 @@ const ensureAgentWorktrees = async (repoUrl: string) => {
   }
 }
 
+const jsonErrorResponse = (status: number, message: string) =>
+  new Response(JSON.stringify({ status: 'error', message }), {
+    status,
+    headers: {
+      ...corsHeaders,
+      'content-type': 'application/json; charset=utf-8',
+    },
+  })
+
+const parseReviewMessages = (value: unknown): Array<ReviewMessage> => {
+  if (!Array.isArray(value)) return []
+
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return []
+    }
+
+    const record = entry as Record<string, unknown>
+    const role = record.role
+    const content = record.content
+    if ((role !== 'system' && role !== 'user') || typeof content !== 'string') {
+      return []
+    }
+
+    const trimmed = content.trim()
+    if (!trimmed) return []
+
+    return [{ role, content: trimmed }]
+  })
+}
+
+const resolveReviewReasoningEffort = (
+  value: unknown,
+): ReviewReasoningEffort | undefined => {
+  if (typeof value !== 'string') return undefined
+  const normalized = value.trim().toLowerCase() as ReviewReasoningEffort
+  if (!reviewReasoningEfforts.has(normalized)) return undefined
+  return normalized
+}
+
+const errorMessageFromUnknown = (error: unknown) =>
+  error instanceof Error ? error.message : 'Unknown error'
+
+const parseOpenRouterErrorMessage = async (response: Response) => {
+  const raw = (await response.text()).trim()
+  if (!raw) {
+    return `${response.status} ${response.statusText}`.trim()
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'error' in parsed &&
+      typeof parsed.error === 'object' &&
+      parsed.error !== null &&
+      'message' in parsed.error &&
+      typeof parsed.error.message === 'string'
+    ) {
+      const errorRecord = parsed.error as Record<string, unknown>
+      const details: Array<string> = [errorRecord.message as string]
+      if (
+        'code' in errorRecord &&
+        (typeof errorRecord.code === 'string' ||
+          typeof errorRecord.code === 'number')
+      ) {
+        details.push(`code=${String(errorRecord.code)}`)
+      }
+      if (
+        'metadata' in errorRecord &&
+        typeof errorRecord.metadata === 'object' &&
+        errorRecord.metadata !== null
+      ) {
+        const metadata = errorRecord.metadata as Record<string, unknown>
+        if (typeof metadata.provider_name === 'string') {
+          details.push(`provider=${metadata.provider_name}`)
+        }
+        if (typeof metadata.raw === 'string' && metadata.raw.trim()) {
+          details.push(metadata.raw.trim())
+        }
+      }
+      return details.join(' | ')
+    }
+  } catch {
+    // ignore JSON parse errors
+  }
+
+  return raw
+}
+
+const proxyReviewStream = async (req: Request) => {
+  let payload: unknown
+  try {
+    payload = await req.json()
+  } catch {
+    return jsonErrorResponse(400, 'Invalid JSON payload')
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return jsonErrorResponse(400, 'Invalid review payload')
+  }
+
+  const body = payload as Record<string, unknown>
+  const model = typeof body.model === 'string' ? body.model.trim() : ''
+  if (!model) {
+    return jsonErrorResponse(400, 'Missing review model')
+  }
+
+  const messages = parseReviewMessages(body.messages)
+  if (messages.length === 0) {
+    return jsonErrorResponse(400, 'Missing review messages')
+  }
+
+  const keyOverride = typeof body.apiKey === 'string' ? body.apiKey.trim() : ''
+  const apiKey = keyOverride || process.env.OPENROUTER_API_KEY?.trim() || ''
+  if (!apiKey) {
+    return jsonErrorResponse(
+      400,
+      'OpenRouter API key missing. Provide apiKey or set OPENROUTER_API_KEY in shell.',
+    )
+  }
+
+  const reasoningEffort = resolveReviewReasoningEffort(body.reasoningEffort)
+  const origin = req.headers.get('origin')?.trim() || 'http://localhost:3000'
+  const openRouterBody = {
+    model,
+    messages,
+    stream: true,
+    max_tokens: reviewMaxTokens,
+    ...(reasoningEffort
+      ? {
+          reasoning: {
+            effort: reasoningEffort,
+          },
+        }
+      : {}),
+  }
+
+  const requestOpenRouter = (payload: Record<string, unknown>) =>
+    fetch(openRouterChatUrl, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+        'http-referer': origin,
+        'x-title': 'hbench',
+      },
+      body: JSON.stringify(payload),
+      signal: req.signal,
+    })
+
+  let upstreamResponse: Response
+  try {
+    upstreamResponse = await requestOpenRouter(openRouterBody)
+  } catch (error) {
+    return jsonErrorResponse(
+      502,
+      `OpenRouter request failed: ${errorMessageFromUnknown(error)}`,
+    )
+  }
+
+  if (!upstreamResponse.ok) {
+    const firstMessage = await parseOpenRouterErrorMessage(upstreamResponse)
+    const shouldRetry =
+      upstreamResponse.status >= 500 ||
+      /provider returned error|bad gateway|service unavailable|timed out/i.test(
+        firstMessage,
+      )
+    const unsupportedReasoning =
+      reasoningEffort !== undefined &&
+      /reasoning|thinking|effort|unsupported|not support|invalid parameter/i.test(
+        firstMessage,
+      )
+
+    if (shouldRetry && !req.signal.aborted) {
+      const retryBody = {
+        model,
+        messages,
+        stream: true,
+        max_tokens: Math.min(reviewMaxTokens, 1_600),
+        ...(reasoningEffort && !unsupportedReasoning
+          ? {
+              reasoning: {
+                effort: reasoningEffort,
+              },
+            }
+          : {}),
+      }
+
+      try {
+        upstreamResponse = await requestOpenRouter(retryBody)
+      } catch (error) {
+        return jsonErrorResponse(
+          502,
+          `OpenRouter retry failed: ${errorMessageFromUnknown(error)}`,
+        )
+      }
+
+      if (!upstreamResponse.ok) {
+        const retryMessage = await parseOpenRouterErrorMessage(upstreamResponse)
+        return jsonErrorResponse(
+          upstreamResponse.status,
+          `OpenRouter error: ${retryMessage}`,
+        )
+      }
+    } else {
+      return jsonErrorResponse(
+        upstreamResponse.status,
+        `OpenRouter error: ${firstMessage}`,
+      )
+    }
+  }
+
+  if (!upstreamResponse.body) {
+    return jsonErrorResponse(502, 'OpenRouter stream unavailable')
+  }
+
+  return new Response(upstreamResponse.body, {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+    },
+  })
+}
+
 Bun.serve({
   port: 4000,
   fetch(req, server) {
@@ -346,6 +599,18 @@ Bun.serve({
             headers: corsHeaders,
           })
         })
+    }
+    if (url.pathname === '/review' && req.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: {
+          ...corsHeaders,
+          'access-control-allow-methods': 'POST, OPTIONS',
+          'access-control-allow-headers': 'content-type',
+        },
+      })
+    }
+    if (url.pathname === '/review' && req.method === 'POST') {
+      return proxyReviewStream(req)
     }
     if (url.pathname == '/vt' && req.headers.get('upgrade') === 'websocket') {
       if (server.upgrade(req)) return

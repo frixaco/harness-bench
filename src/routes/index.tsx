@@ -35,18 +35,21 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import {
+  buildReviewMessages,
+  readOpenRouterSseStream,
+  reviewModelOptions,
+} from '@/lib/reviewer'
 
 export const Route = createFileRoute('/')({
   component: App,
 })
 
 const agents = Object.keys(modelsJson as Record<string, unknown>)
-const reviewModels = [
-  'claude-sonnet-4-5',
-  'claude-opus-4-5',
-  'gpt-5.2',
-  'gpt-5.2-codex',
-]
+const reviewModels = reviewModelOptions.map((option) => option.id)
+const getReviewModelOption = (modelId: string) =>
+  reviewModelOptions.find((option) => option.id === modelId) ??
+  reviewModelOptions[0]
 const createRunRequestedState = () =>
   agents.reduce(
     (a, c) => {
@@ -70,8 +73,10 @@ function App() {
   const [reviewMarkdown, setReviewMarkdown] = useState<string | null>(null)
   const [reviewError, setReviewError] = useState<string | null>(null)
   const [reviewModel, setReviewModel] = useState(reviewModels[0])
+  const [reviewApiKey, setReviewApiKey] = useState('')
   const setupToastIdRef = useRef<string | number | null>(null)
   const wipeToastIdRef = useRef<string | number | null>(null)
+  const reviewAbortRef = useRef<AbortController | null>(null)
   const trimmedRepoUrl = repoUrl.trim()
   const trimmedPrompt = prompt.trim()
   const isRepoSetup =
@@ -147,27 +152,129 @@ function App() {
     }
   }, [stopping])
 
-  const requestReview = useCallback(() => {
-    // TODO: fetch diffs for all agents, combine, send to AI model for review
+  const requestReview = useCallback(async () => {
+    reviewAbortRef.current?.abort()
+
+    const controller = new AbortController()
+    reviewAbortRef.current = controller
+    let streamedMarkdown = ''
+
+    setReviewOpen(true)
     setReviewLoading(true)
     setReviewError(null)
-    setReviewMarkdown(null)
-    setReviewOpen(true)
+    setReviewMarkdown('')
 
-    // Dummy: simulate streaming response
-    const dummy = DUMMY_REVIEW_MARKDOWN
-    let idx = 0
-    const interval = window.setInterval(() => {
-      idx += 12
-      if (idx >= dummy.length) {
-        setReviewMarkdown(dummy)
-        setReviewLoading(false)
-        clearInterval(interval)
-      } else {
-        setReviewMarkdown(dummy.slice(0, idx))
+    try {
+      const reviewBase = `${window.location.protocol}//${window.location.hostname}:4000`
+      const diffResults = await Promise.all(
+        agents.map(async (agent, index) => {
+          const search = new URLSearchParams({
+            agent,
+            t: `${Date.now()}-${index}`,
+          })
+          if (trimmedRepoUrl) {
+            search.set('repoUrl', trimmedRepoUrl)
+          }
+          const response = await fetch(
+            `${reviewBase}/diff?${search.toString()}`,
+            {
+              signal: controller.signal,
+            },
+          )
+          const body = await response.text()
+          if (!response.ok) {
+            throw new Error(`${agent}: ${body || 'Failed to load diff'}`)
+          }
+          return {
+            agent,
+            diff: body.trim(),
+          }
+        }),
+      )
+
+      const diffs = diffResults.filter((entry) => entry.diff.length > 0)
+      if (diffs.length === 0) {
+        throw new Error(
+          'No agent diffs found. Run agents and make changes first.',
+        )
       }
-    }, 30)
-  }, [])
+
+      const selectedModel = getReviewModelOption(reviewModel)
+      const response = await fetch(`${reviewBase}/review`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: selectedModel.id,
+          apiKey: reviewApiKey.trim() || undefined,
+          reasoningEffort: selectedModel.reasoningEffort,
+          messages: buildReviewMessages({
+            repoUrl: trimmedRepoUrl,
+            diffs,
+          }),
+        }),
+      })
+
+      if (!response.ok) {
+        const raw = (await response.text()).trim()
+        let message = raw || 'Failed to start review stream'
+        if (raw) {
+          try {
+            const parsed: unknown = JSON.parse(raw)
+            if (
+              typeof parsed === 'object' &&
+              parsed !== null &&
+              'message' in parsed &&
+              typeof parsed.message === 'string'
+            ) {
+              message = parsed.message
+            }
+          } catch {
+            // non-JSON error body
+          }
+        }
+        throw new Error(message)
+      }
+      if (!response.body) {
+        throw new Error('Review stream unavailable')
+      }
+
+      await readOpenRouterSseStream(response.body, (token) => {
+        streamedMarkdown += token
+        setReviewMarkdown(streamedMarkdown)
+      })
+
+      if (streamedMarkdown.trim().length === 0) {
+        setReviewMarkdown('No review content returned.')
+      }
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return
+      }
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      setReviewError(`Review stream failed: ${message}`)
+      if (streamedMarkdown.trim().length > 0) {
+        setReviewMarkdown(streamedMarkdown)
+      } else {
+        setReviewMarkdown(null)
+      }
+    } finally {
+      if (reviewAbortRef.current === controller) {
+        reviewAbortRef.current = null
+        setReviewLoading(false)
+      }
+    }
+  }, [reviewApiKey, reviewModel, trimmedRepoUrl])
+
+  useEffect(
+    () => () => {
+      reviewAbortRef.current?.abort()
+      reviewAbortRef.current = null
+    },
+    [],
+  )
 
   useEffect(() => {
     if (!ws.conn) return
@@ -356,7 +463,11 @@ function App() {
             open={reviewOpen}
             onOpenChange={(open) => {
               setReviewOpen(open)
-              if (!open) setReviewLoading(false)
+              if (!open) {
+                reviewAbortRef.current?.abort()
+                reviewAbortRef.current = null
+                setReviewLoading(false)
+              }
             }}
           >
             <SheetTrigger
@@ -381,37 +492,51 @@ function App() {
               className="data-[side=right]:w-[96vw] data-[side=right]:sm:max-w-[48rem]"
             >
               <SheetHeader>
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={reviewModel}
-                    onValueChange={(v) => v && setReviewModel(v)}
-                  >
-                    <SelectTrigger
-                      size="sm"
-                      className="h-6 gap-1 px-2 text-xs font-mono"
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={reviewModel}
+                      onValueChange={(v) => v && setReviewModel(v)}
                     >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {reviewModels.map((m) => (
-                        <SelectItem key={m} value={m}>
-                          {m}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    size="xs"
-                    disabled={reviewLoading}
-                    onClick={requestReview}
-                  >
-                    {reviewLoading ? (
-                      <Loader2 className="animate-spin" />
-                    ) : (
-                      <RefreshCcw />
-                    )}{' '}
-                    Re-run
-                  </Button>
+                      <SelectTrigger
+                        size="sm"
+                        className="h-6 gap-1 px-2 text-xs font-mono"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {reviewModelOptions.map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="xs"
+                      disabled={reviewLoading}
+                      onClick={requestReview}
+                    >
+                      {reviewLoading ? (
+                        <Loader2 className="animate-spin" />
+                      ) : (
+                        <RefreshCcw />
+                      )}{' '}
+                      Re-run
+                    </Button>
+                  </div>
+                  <Input
+                    value={reviewApiKey}
+                    onChange={(event) =>
+                      setReviewApiKey(event.currentTarget.value)
+                    }
+                    type="password"
+                    placeholder="OpenRouter API key (optional)"
+                    className="h-7 font-mono text-xs"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Empty = use <code>OPENROUTER_API_KEY</code> from shell env.
+                  </p>
                 </div>
               </SheetHeader>
               <div className="flex-1 overflow-auto p-4">
@@ -680,11 +805,7 @@ function TUI({
           )}
           aria-label={`Launch ${name}`}
         >
-          {runRequested ? (
-            <RefreshCcw className="animate-spin" />
-          ) : (
-            <Play />
-          )}
+          {runRequested ? <RefreshCcw className="animate-spin" /> : <Play />}
         </Button>
 
         <Sheet
@@ -738,9 +859,7 @@ function TUI({
       <div className="relative flex-1">
         {!runRequested && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-            <span className="text-xs text-white/25">
-              press ▶ to launch
-            </span>
+            <span className="text-xs text-white/25">press ▶ to launch</span>
           </div>
         )}
         <div ref={termDivContainer} className="size-full caret-background" />
@@ -806,10 +925,7 @@ function ReviewView({
   error: string | null
   markdown: string | null
 }) {
-  if (error) {
-    return <p className="text-sm text-destructive">{error}</p>
-  }
-  if (!markdown && !loading) {
+  if (!markdown && !loading && !error) {
     return (
       <p className="text-sm text-muted-foreground">
         Click Review to compare all agent diffs.
@@ -824,65 +940,16 @@ function ReviewView({
       </div>
     )
   }
+  if (error && !markdown) {
+    return <p className="text-sm text-destructive">{error}</p>
+  }
 
   return (
-    <Streamdown isAnimating={loading} caret={loading ? 'block' : undefined}>
-      {markdown ?? ''}
-    </Streamdown>
+    <div className="space-y-3">
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      <Streamdown isAnimating={loading} caret={loading ? 'block' : undefined}>
+        {markdown ?? ''}
+      </Streamdown>
+    </div>
   )
 }
-
-const DUMMY_REVIEW_MARKDOWN = `# Comparative Code Review
-
-## Summary
-
-All six agents attempted the task of adding input validation to the \`createUser\` API endpoint. Below is a comparative analysis of each approach.
-
-## Agent Comparison
-
-| Agent | Approach | Validation Lib | Tests | Edge Cases |
-|-------|----------|---------------|-------|------------|
-| **amp** | Zod schema at handler level | zod | ✅ 12 tests | ✅ Comprehensive |
-| **claude** | Inline validation + early returns | none | ✅ 8 tests | ⚠️ Missing unicode |
-| **codex** | Middleware pattern | joi | ✅ 6 tests | ⚠️ No nested objects |
-| **droid** | Zod schema + custom middleware | zod | ✅ 10 tests | ✅ Good |
-| **opencode** | Type guards + assertions | none | ❌ No tests | ❌ Incomplete |
-| **pi** | Zod + tRPC integration | zod | ✅ 14 tests | ✅ Best coverage |
-
-## Detailed Analysis
-
-### 🏆 Best Overall: \`pi\`
-
-Leveraged tRPC's built-in input validation with a well-structured Zod schema:
-
-\`\`\`typescript
-const createUserSchema = z.object({
-  name: z.string().min(1).max(100),
-  email: z.string().email(),
-  role: z.enum(["admin", "user", "viewer"]),
-});
-\`\`\`
-
-**Strengths:** Clean separation, reusable schemas, excellent error messages.
-
-### ⚠️ Needs Work: \`opencode\`
-
-Used manual type guards without a validation library:
-
-\`\`\`typescript
-function isValidUser(input: unknown): input is CreateUserInput {
-  if (typeof input !== "object" || input === null) return false;
-  // Missing: email format, role enum check
-  return "name" in input && "email" in input;
-}
-\`\`\`
-
-**Issues:** Incomplete validation, no test coverage, won't catch malformed emails.
-
-## Recommendations
-
-1. **Standardize on Zod** — 4/6 agents chose it, it's the ecosystem default
-2. **Add unicode handling** — Only \`amp\` and \`pi\` handle unicode names correctly
-3. **Error response format** — Agents disagree on error shape; adopt RFC 7807
-4. **Test edge cases** — Empty strings, SQL injection patterns, oversized payloads
-`
