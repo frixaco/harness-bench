@@ -3,21 +3,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Terminal, init } from 'ghostty-web'
 import { parsePatchFiles } from '@pierre/diffs'
 import { FileDiff } from '@pierre/diffs/react'
-import { Columns2, Play, RefreshCcw } from 'lucide-react'
+import { Streamdown } from 'streamdown'
+import {
+  Columns2,
+  Loader2,
+  MessageSquareCode,
+  Play,
+  RefreshCcw,
+  Send,
+  Square,
+  Trash2,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import modelsJson from '../../core/models.json'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useWS } from '@/lib/websocket'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
 import { ThemeToggle } from '@/components/theme-toggle'
 import {
   Sheet,
@@ -26,14 +27,26 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet'
-import { getAgentPattern } from '@/lib/agent-patterns'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/')({
   component: App,
 })
 
-const agentModelMapping = modelsJson as Record<string, Array<string>>
-const agents = Object.keys(agentModelMapping)
+const agents = Object.keys(modelsJson as Record<string, unknown>)
+const reviewModels = [
+  'claude-sonnet-4-5',
+  'claude-opus-4-5',
+  'gpt-5.2',
+  'gpt-5.2-codex',
+]
 const createRunRequestedState = () =>
   agents.reduce(
     (a, c) => {
@@ -52,12 +65,65 @@ function App() {
     createRunRequestedState(),
   )
   const [stopping, setStopping] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [reviewLoading, setReviewLoading] = useState(false)
+  const [reviewMarkdown, setReviewMarkdown] = useState<string | null>(null)
+  const [reviewError, setReviewError] = useState<string | null>(null)
+  const [reviewModel, setReviewModel] = useState(reviewModels[0])
   const setupToastIdRef = useRef<string | number | null>(null)
   const wipeToastIdRef = useRef<string | number | null>(null)
   const trimmedRepoUrl = repoUrl.trim()
+  const trimmedPrompt = prompt.trim()
   const isRepoSetup =
     trimmedRepoUrl.length > 0 && setupRepoUrl === trimmedRepoUrl
-  console.log({ prompt })
+  const launchedAgentCount = useMemo(
+    () => Object.values(runRequested).filter(Boolean).length,
+    [runRequested],
+  )
+
+  const launchAgent = useCallback(
+    (agent: string) => {
+      ws.send(agent)
+      setRunRequested((prev) => ({ ...prev, [agent]: true }))
+    },
+    [ws],
+  )
+
+  const launchAllAgents = useCallback(() => {
+    agents.forEach((agent) => ws.send(agent))
+    setRunRequested(
+      agents.reduce(
+        (acc, agent) => {
+          acc[agent] = true
+          return acc
+        },
+        {} as Record<string, boolean>,
+      ),
+    )
+  }, [ws])
+
+  const runPromptOnAllAgents = useCallback(() => {
+    if (!trimmedPrompt) return
+
+    agents.forEach((agent) => {
+      ws.send(
+        JSON.stringify({
+          type: 'input',
+          agent,
+          data: trimmedPrompt,
+        }),
+      )
+      window.setTimeout(() => {
+        ws.send(
+          JSON.stringify({
+            type: 'input',
+            agent,
+            data: '\r',
+          }),
+        )
+      }, 250)
+    })
+  }, [trimmedPrompt, ws])
 
   const stopAllAgents = useCallback(async () => {
     if (stopping) return
@@ -80,6 +146,28 @@ function App() {
       setStopping(false)
     }
   }, [stopping])
+
+  const requestReview = useCallback(() => {
+    // TODO: fetch diffs for all agents, combine, send to AI model for review
+    setReviewLoading(true)
+    setReviewError(null)
+    setReviewMarkdown(null)
+    setReviewOpen(true)
+
+    // Dummy: simulate streaming response
+    const dummy = DUMMY_REVIEW_MARKDOWN
+    let idx = 0
+    const interval = window.setInterval(() => {
+      idx += 12
+      if (idx >= dummy.length) {
+        setReviewMarkdown(dummy)
+        setReviewLoading(false)
+        clearInterval(interval)
+      } else {
+        setReviewMarkdown(dummy.slice(0, idx))
+      }
+    }, 30)
+  }, [])
 
   useEffect(() => {
     if (!ws.conn) return
@@ -149,176 +237,211 @@ function App() {
   }, [ws.conn])
 
   return (
-    <div className="flex w-full flex-col items-center gap-8 text-sm pt-16 px-24 font-mono">
-      <div className="flex w-full justify-end">
-        <ThemeToggle />
-      </div>
+    <main className="flex min-h-screen w-full flex-col bg-background">
+      {/* ── Header ── */}
+      <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto flex h-11 max-w-[1920px] items-center gap-3 px-4">
+          <span className="text-sm font-bold tracking-tight">hbench</span>
 
-      <div className="flex flex-col md:flex-row gap-2 justify-center-center w-full max-w-4xl">
-        <Input
-          value={repoUrl}
-          onChange={(e) => setRepoUrl(e.currentTarget.value)}
-          placeholder="GitHub repo URL"
-          className="w-full"
-        />
-      </div>
+          <div className="mx-2 h-4 w-px bg-border" />
 
-      <div className="flex flex-col md:flex-row gap-2 justify-center-center w-full max-w-4xl">
-        <Textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.currentTarget.value)}
-          placeholder="Enter your prompt..."
-          className="w-full h-28"
-        ></Textarea>
-      </div>
-
-      <div className="flex w-full max-w-4xl gap-2 flex-wrap justify-start">
-        {agents.map((agent) => (
-          <div
-            className="flex flex-col gap-1 items-center rounded-lg p-1 border"
-            style={getAgentPattern(agent)}
-          >
-            <div className="flex min-w-36 items-center w-full justify-start">
-              <Button
-                className="rounded-full"
-                size="icon"
-                variant="link"
-                disabled={!isRepoSetup}
-                onClick={() => {
-                  ws.send(agent)
-                  setRunRequested((prev) => ({ ...prev, [agent]: true }))
-                }}
-              >
-                {runRequested[agent] ? (
-                  <RefreshCcw className="animate-spin" />
-                ) : (
-                  <Play />
-                )}
-              </Button>
-              <span className="capitalize px-2">{agent}</span>
-            </div>
-
-            <Select>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="model" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {Object.values(agentModelMapping[agent]).map((model) => (
-                    <SelectItem value={model}>{model}</SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex gap-4">
-        <Button
-          className="font-semibold uppercase px-4 w-24"
-          size="lg"
-          disabled={repoUrl.trim().length === 0}
-          onClick={() => {
-            ws.send(
-              JSON.stringify({
-                type: 'setup',
-                repoUrl: trimmedRepoUrl,
-              }),
-            )
-          }}
-        >
-          SETUP
-        </Button>
-        <Button
-          className="font-semibold uppercase px-4 w-24"
-          size="lg"
-          variant="destructive"
-          onClick={() => {
-            ws.send(
-              JSON.stringify({
-                type: 'wipe',
-              }),
-            )
-          }}
-        >
-          WIPE
-        </Button>
-
-        <Button
-          className="font-semibold uppercase px-4 w-24"
-          size="lg"
-          onClick={() => {
-            agents.forEach((agent) => ws.send(agent))
-            setRunRequested(
-              agents.reduce(
-                (acc, agent) => {
-                  acc[agent] = true
-                  return acc
-                },
-                {} as Record<string, boolean>,
-              ),
-            )
-          }}
-        >
-          LAUNCH
-        </Button>
-
-        <Button
-          className="font-semibold uppercase px-4 w-24"
-          size="lg"
-          disabled={prompt.length < 2}
-          onClick={() => {
-            const trimmedPrompt = prompt.trim()
-            if (!trimmedPrompt) return
-            agents.forEach((agent) => {
-              ws.send(
-                JSON.stringify({
-                  type: 'input',
-                  agent,
-                  data: trimmedPrompt,
-                }),
-              )
-              window.setTimeout(() => {
+          {/* Repo setup inline */}
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <Input
+              value={repoUrl}
+              onChange={(e) => setRepoUrl(e.currentTarget.value)}
+              placeholder="https://github.com/org/repo"
+              className="h-7 max-w-sm font-mono text-xs"
+            />
+            <Button
+              size="xs"
+              disabled={trimmedRepoUrl.length === 0}
+              onClick={() => {
                 ws.send(
                   JSON.stringify({
-                    type: 'input',
-                    agent,
-                    data: '\r',
+                    type: 'setup',
+                    repoUrl: trimmedRepoUrl,
                   }),
                 )
-              }, 250)
-            })
-          }}
-        >
-          RUN
-        </Button>
+              }}
+            >
+              Setup
+            </Button>
+            <Button
+              size="xs"
+              variant="destructive"
+              onClick={() => {
+                ws.send(JSON.stringify({ type: 'wipe' }))
+              }}
+            >
+              <Trash2 /> Wipe
+            </Button>
+          </div>
 
-        <Button
-          className="font-semibold uppercase px-4 w-24"
-          size="lg"
-          variant="destructive"
-          disabled={stopping}
-          onClick={() => {
-            void stopAllAgents()
-          }}
-        >
-          STOP
-        </Button>
-      </div>
+          {/* Status indicators */}
+          <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span
+                className={cn(
+                  'size-1.5 rounded-full',
+                  ws.ready ? 'bg-emerald-500' : 'bg-red-400',
+                )}
+              />
+              {ws.ready ? 'ws' : 'offline'}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span
+                className={cn(
+                  'size-1.5 rounded-full',
+                  isRepoSetup ? 'bg-emerald-500' : 'bg-muted-foreground/50',
+                )}
+              />
+              {isRepoSetup ? 'ready' : 'no repo'}
+            </span>
+          </div>
 
-      <div className="flex size-full gap-4 flex-wrap justify-center">
-        {agents.map((agent) => (
-          <TUI
-            key={agent}
-            name={agent}
-            runRequested={runRequested[agent] ?? false}
-            repoReady={repoUrl.trim().length > 0}
-            repoUrl={repoUrl.trim()}
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {launchedAgentCount}/{agents.length}
+          </span>
+
+          <ThemeToggle />
+        </div>
+      </header>
+
+      {/* ── Command bar ── */}
+      <div className="sticky top-11 z-20 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto flex max-w-[1920px] items-center gap-2 px-4 py-1.5">
+          <input
+            value={prompt}
+            onChange={(e) => setPrompt(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                runPromptOnAllAgents()
+              }
+            }}
+            placeholder="Broadcast prompt to all agents…"
+            className="h-7 flex-1 rounded-md border border-input bg-transparent px-2.5 font-mono text-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 dark:bg-input/30"
           />
-        ))}
+          <Button
+            size="xs"
+            disabled={!isRepoSetup || trimmedPrompt.length === 0}
+            onClick={runPromptOnAllAgents}
+          >
+            <Send /> Send
+          </Button>
+
+          <div className="mx-1 h-4 w-px bg-border" />
+
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={!isRepoSetup}
+            onClick={launchAllAgents}
+          >
+            <Play /> All
+          </Button>
+          <Button
+            size="xs"
+            variant="destructive"
+            disabled={stopping || launchedAgentCount === 0}
+            onClick={() => void stopAllAgents()}
+          >
+            <Square /> Stop
+          </Button>
+
+          <div className="mx-1 h-4 w-px bg-border" />
+
+          <Sheet
+            open={reviewOpen}
+            onOpenChange={(open) => {
+              setReviewOpen(open)
+              if (!open) setReviewLoading(false)
+            }}
+          >
+            <SheetTrigger
+              render={
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={!isRepoSetup}
+                  onClick={requestReview}
+                />
+              }
+            >
+              {reviewLoading ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <MessageSquareCode />
+              )}{' '}
+              Review
+            </SheetTrigger>
+            <SheetContent
+              side="right"
+              className="data-[side=right]:w-[96vw] data-[side=right]:sm:max-w-[48rem]"
+            >
+              <SheetHeader>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={reviewModel}
+                    onValueChange={(v) => v && setReviewModel(v)}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      className="h-6 gap-1 px-2 text-xs font-mono"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {reviewModels.map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {m}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="xs"
+                    disabled={reviewLoading}
+                    onClick={requestReview}
+                  >
+                    {reviewLoading ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      <RefreshCcw />
+                    )}{' '}
+                    Re-run
+                  </Button>
+                </div>
+              </SheetHeader>
+              <div className="flex-1 overflow-auto p-4">
+                <ReviewView
+                  loading={reviewLoading}
+                  error={reviewError}
+                  markdown={reviewMarkdown}
+                />
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
       </div>
-    </div>
+
+      {/* ── Terminal grid ── */}
+      <div className="flex-1 px-3 pt-3 pb-4">
+        <div className="mx-auto grid max-w-[1920px] gap-2 [grid-template-columns:repeat(auto-fit,minmax(420px,1fr))]">
+          {agents.map((agent) => (
+            <TUI
+              key={agent}
+              name={agent}
+              runRequested={runRequested[agent] ?? false}
+              repoReady={isRepoSetup}
+              repoUrl={trimmedRepoUrl}
+              onLaunch={() => launchAgent(agent)}
+            />
+          ))}
+        </div>
+      </div>
+    </main>
   )
 }
 
@@ -327,11 +450,13 @@ function TUI({
   runRequested,
   repoReady,
   repoUrl,
+  onLaunch,
 }: {
   name: string
   runRequested: boolean
   repoReady: boolean
   repoUrl: string
+  onLaunch: () => void
 }) {
   const ws = useWS()
   const termDivContainer = useRef<HTMLDivElement | null>(null)
@@ -367,7 +492,6 @@ function TUI({
       teardownSocket()
       socket = conn
       dataDisposable = term.onData((data) => {
-        console.log({ data })
         socket?.send(
           JSON.stringify({
             type: 'input',
@@ -530,9 +654,38 @@ function TUI({
   )
 
   return (
-    <div className="h-120 flex flex-col w-full max-w-lg">
-      <div className="border rounded-t-lg px-4 py-2 flex justify-between items-center">
-        <p className="capitalize">{name}</p>
+    <div className="flex h-[38rem] min-h-[28rem] flex-col overflow-hidden rounded-lg border bg-[#16181a]">
+      {/* Card header: agent name + model + actions */}
+      <div className="flex items-center gap-2 border-b border-white/[0.06] bg-[#1c1e21] px-2.5 py-1.5">
+        <span
+          className={cn(
+            'size-1.5 shrink-0 rounded-full',
+            runRequested ? 'bg-emerald-500 animate-pulse' : 'bg-white/20',
+          )}
+        />
+        <span className="text-xs font-semibold capitalize text-white/90">
+          {name}
+        </span>
+
+        <div className="flex-1" />
+
+        <Button
+          size="icon-xs"
+          variant={runRequested ? 'secondary' : 'ghost'}
+          disabled={!repoReady}
+          onClick={onLaunch}
+          className={cn(
+            'text-white/60 hover:text-white',
+            runRequested && 'text-white',
+          )}
+          aria-label={`Launch ${name}`}
+        >
+          {runRequested ? (
+            <RefreshCcw className="animate-spin" />
+          ) : (
+            <Play />
+          )}
+        </Button>
 
         <Sheet
           open={diffOpen}
@@ -547,8 +700,9 @@ function TUI({
           <SheetTrigger
             render={
               <Button
-                variant="outline"
-                className="tracking-tighter"
+                size="icon-xs"
+                variant="ghost"
+                className="text-white/60 hover:text-white"
                 disabled={!repoReady}
                 onClick={() => {
                   if (!diffOpen) {
@@ -560,16 +714,16 @@ function TUI({
               />
             }
           >
-            View diff <Columns2 />
+            <Columns2 />
           </SheetTrigger>
           <SheetContent
             side="right"
-            className="data-[side=right]:w-[90vw] data-[side=right]:sm:max-w-[90vw]"
+            className="data-[side=right]:w-[96vw] data-[side=right]:sm:max-w-[92vw]"
           >
             <SheetHeader>
               <SheetTitle className="capitalize">{name} — Diff</SheetTitle>
             </SheetHeader>
-            <div className="overflow-auto flex-1 p-4">
+            <div className="flex-1 overflow-auto p-4">
               <DiffView
                 loading={diffLoading}
                 error={diffError}
@@ -580,10 +734,17 @@ function TUI({
         </Sheet>
       </div>
 
-      <div
-        ref={termDivContainer}
-        className="flex-1 rounded-b-lg w-full caret-background border"
-      />
+      {/* Terminal area */}
+      <div className="relative flex-1">
+        {!runRequested && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+            <span className="text-xs text-white/25">
+              press ▶ to launch
+            </span>
+          </div>
+        )}
+        <div ref={termDivContainer} className="size-full caret-background" />
+      </div>
     </div>
   )
 }
@@ -635,3 +796,93 @@ function DiffView({
     </div>
   )
 }
+
+function ReviewView({
+  loading,
+  error,
+  markdown,
+}: {
+  loading: boolean
+  error: string | null
+  markdown: string | null
+}) {
+  if (error) {
+    return <p className="text-sm text-destructive">{error}</p>
+  }
+  if (!markdown && !loading) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Click Review to compare all agent diffs.
+      </p>
+    )
+  }
+  if (!markdown && loading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" />
+        Collecting diffs and sending for review…
+      </div>
+    )
+  }
+
+  return (
+    <Streamdown isAnimating={loading} caret={loading ? 'block' : undefined}>
+      {markdown ?? ''}
+    </Streamdown>
+  )
+}
+
+const DUMMY_REVIEW_MARKDOWN = `# Comparative Code Review
+
+## Summary
+
+All six agents attempted the task of adding input validation to the \`createUser\` API endpoint. Below is a comparative analysis of each approach.
+
+## Agent Comparison
+
+| Agent | Approach | Validation Lib | Tests | Edge Cases |
+|-------|----------|---------------|-------|------------|
+| **amp** | Zod schema at handler level | zod | ✅ 12 tests | ✅ Comprehensive |
+| **claude** | Inline validation + early returns | none | ✅ 8 tests | ⚠️ Missing unicode |
+| **codex** | Middleware pattern | joi | ✅ 6 tests | ⚠️ No nested objects |
+| **droid** | Zod schema + custom middleware | zod | ✅ 10 tests | ✅ Good |
+| **opencode** | Type guards + assertions | none | ❌ No tests | ❌ Incomplete |
+| **pi** | Zod + tRPC integration | zod | ✅ 14 tests | ✅ Best coverage |
+
+## Detailed Analysis
+
+### 🏆 Best Overall: \`pi\`
+
+Leveraged tRPC's built-in input validation with a well-structured Zod schema:
+
+\`\`\`typescript
+const createUserSchema = z.object({
+  name: z.string().min(1).max(100),
+  email: z.string().email(),
+  role: z.enum(["admin", "user", "viewer"]),
+});
+\`\`\`
+
+**Strengths:** Clean separation, reusable schemas, excellent error messages.
+
+### ⚠️ Needs Work: \`opencode\`
+
+Used manual type guards without a validation library:
+
+\`\`\`typescript
+function isValidUser(input: unknown): input is CreateUserInput {
+  if (typeof input !== "object" || input === null) return false;
+  // Missing: email format, role enum check
+  return "name" in input && "email" in input;
+}
+\`\`\`
+
+**Issues:** Incomplete validation, no test coverage, won't catch malformed emails.
+
+## Recommendations
+
+1. **Standardize on Zod** — 4/6 agents chose it, it's the ecosystem default
+2. **Add unicode handling** — Only \`amp\` and \`pi\` handle unicode names correctly
+3. **Error response format** — Agents disagree on error shape; adopt RFC 7807
+4. **Test edge cases** — Empty strings, SQL injection patterns, oversized payloads
+`
