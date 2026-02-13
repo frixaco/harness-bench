@@ -14,6 +14,13 @@ CLI agent benchmarker dashboard. Run multiple coding agents on the same task, wa
 
 ## Quick Start
 
+- Amp: `curl -fsSL https://ampcode.com/install.sh | bash`
+- Droid: `curl -fsSL https://app.factory.ai/cli | sh`
+- OpenCode: `curl -fsSL https://opencode.ai/install | bash`
+- Codex: `bun i -g @openai/codex`
+- Pi: `bun i -g @mariozechner/pi-coding-agent`
+- Claude Code: `curl -fsSL https://claude.ai/install.sh | bash`
+
 ```bash
 bun install
 bun run dev
