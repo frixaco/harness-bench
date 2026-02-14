@@ -1,10 +1,13 @@
-import './index.css'
-import { Dashboard } from './ghostty-web'
-
 export function App() {
-  return <div className="">
-    <Dashboard />
-  </div>
+  return (
+    <WebSocketProvider>
+      <Dashboard />
+    </WebSocketProvider>
+  );
 }
 
-export default App
+export default App;
+
+import "./index.css";
+import { Dashboard } from "./ghostty-web";
+import { WebSocketProvider } from "./lib/websocket";

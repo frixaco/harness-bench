@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Terminal, init } from 'ghostty-web'
-import { parsePatchFiles } from '@pierre/diffs'
-import { FileDiff } from '@pierre/diffs/react'
-import { Streamdown } from 'streamdown'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Terminal, init } from "ghostty-web";
+import { parsePatchFiles } from "@pierre/diffs";
+import { FileDiff } from "@pierre/diffs/react";
+import { Streamdown } from "streamdown";
 import {
   Columns2,
   Loader2,
@@ -12,193 +12,193 @@ import {
   Send,
   Square,
   Trash2,
-} from 'lucide-react'
-import { toast } from 'sonner'
-import modelsJson from './models.json'
-import { Button } from './components/button'
-import { Input } from './components/input'
-import { useWS } from './lib/websocket'
-import { ThemeToggle } from './components/theme'
+} from "lucide-react";
+import { toast } from "sonner";
+import modelsJson from "./models.json";
+import { Button } from "./components/button";
+import { Input } from "./components/input";
+import { useWS } from "./lib/websocket";
+import { ThemeToggle } from "./components/theme";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from './components/sheet'
+} from "./components/sheet";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from './components/select'
-import { cn } from './lib/utils'
+} from "./components/select";
+import { cn } from "./lib/utils";
 import {
   buildReviewMessages,
   readOpenRouterSseStream,
   reviewModelOptions,
-} from './lib/reviewer'
+} from "./lib/reviewer";
 
-const agents = Object.keys(modelsJson as Record<string, unknown>)
-const reviewModels = reviewModelOptions.map((option) => option.id)
+const agents = Object.keys(modelsJson as Record<string, unknown>);
+const reviewModels = reviewModelOptions.map((option) => option.id);
 const getReviewModelOption = (modelId: string) =>
   reviewModelOptions.find((option) => option.id === modelId) ??
-  reviewModelOptions[0]
+  reviewModelOptions[0];
 const createRunRequestedState = () =>
   agents.reduce(
     (a, c) => {
-      a[c] = false
-      return a
+      a[c] = false;
+      return a;
     },
     {} as Record<string, boolean>,
-  )
+  );
 
 export function Dashboard() {
-  const [prompt, setPrompt] = useState('')
-  const [repoUrl, setRepoUrl] = useState('')
-  const [setupRepoUrl, setSetupRepoUrl] = useState<string | null>(null)
-  const ws = useWS()
+  const [prompt, setPrompt] = useState("");
+  const [repoUrl, setRepoUrl] = useState("");
+  const [setupRepoUrl, setSetupRepoUrl] = useState<string | null>(null);
+  const ws = useWS();
   const [runRequested, setRunRequested] = useState<Record<string, boolean>>(
     createRunRequestedState(),
-  )
-  const [stopping, setStopping] = useState(false)
-  const [reviewOpen, setReviewOpen] = useState(false)
-  const [reviewLoading, setReviewLoading] = useState(false)
-  const [reviewMarkdown, setReviewMarkdown] = useState<string | null>(null)
-  const [reviewError, setReviewError] = useState<string | null>(null)
-  const [reviewModel, setReviewModel] = useState(reviewModels[0])
-  const [reviewApiKey, setReviewApiKey] = useState('')
-  const setupToastIdRef = useRef<string | number | null>(null)
-  const wipeToastIdRef = useRef<string | number | null>(null)
-  const reviewAbortRef = useRef<AbortController | null>(null)
-  const trimmedRepoUrl = repoUrl.trim()
-  const trimmedPrompt = prompt.trim()
+  );
+  const [stopping, setStopping] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewMarkdown, setReviewMarkdown] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewModel, setReviewModel] = useState(reviewModels[0]);
+  const [reviewApiKey, setReviewApiKey] = useState("");
+  const setupToastIdRef = useRef<string | number | null>(null);
+  const wipeToastIdRef = useRef<string | number | null>(null);
+  const reviewAbortRef = useRef<AbortController | null>(null);
+  const trimmedRepoUrl = repoUrl.trim();
+  const trimmedPrompt = prompt.trim();
   const isRepoSetup =
-    trimmedRepoUrl.length > 0 && setupRepoUrl === trimmedRepoUrl
+    trimmedRepoUrl.length > 0 && setupRepoUrl === trimmedRepoUrl;
   const launchedAgentCount = useMemo(
     () => Object.values(runRequested).filter(Boolean).length,
     [runRequested],
-  )
+  );
 
   const launchAgent = useCallback(
     (agent: string) => {
-      ws.send(agent)
-      setRunRequested((prev) => ({ ...prev, [agent]: true }))
+      ws.send(agent);
+      setRunRequested((prev) => ({ ...prev, [agent]: true }));
     },
     [ws],
-  )
+  );
 
   const launchAllAgents = useCallback(() => {
-    agents.forEach((agent) => ws.send(agent))
+    agents.forEach((agent) => ws.send(agent));
     setRunRequested(
       agents.reduce(
         (acc, agent) => {
-          acc[agent] = true
-          return acc
+          acc[agent] = true;
+          return acc;
         },
         {} as Record<string, boolean>,
       ),
-    )
-  }, [ws])
+    );
+  }, [ws]);
 
   const runPromptOnAllAgents = useCallback(() => {
-    if (!trimmedPrompt) return
+    if (!trimmedPrompt) return;
 
     agents.forEach((agent) => {
       ws.send(
         JSON.stringify({
-          type: 'input',
+          type: "input",
           agent,
           data: trimmedPrompt,
         }),
-      )
+      );
       window.setTimeout(() => {
         ws.send(
           JSON.stringify({
-            type: 'input',
+            type: "input",
             agent,
-            data: '\r',
+            data: "\r",
           }),
-        )
-      }, 250)
-    })
-  }, [trimmedPrompt, ws])
+        );
+      }, 250);
+    });
+  }, [trimmedPrompt, ws]);
 
   const stopAllAgents = useCallback(async () => {
-    if (stopping) return
-    setStopping(true)
+    if (stopping) return;
+    setStopping(true);
     try {
-      const stopBase = `${window.location.protocol}//${window.location.hostname}:4000`
+      const stopBase = `${window.location.protocol}//${window.location.hostname}:4000`;
       const response = await fetch(`${stopBase}/stop`, {
-        method: 'POST',
-      })
+        method: "POST",
+      });
       if (!response.ok) {
-        const message = (await response.text()).trim()
-        throw new Error(message || 'Failed to stop agents')
+        const message = (await response.text()).trim();
+        throw new Error(message || "Failed to stop agents");
       }
-      toast.success('Stopped all agents')
+      toast.success("Stopped all agents");
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      toast.error('Stop failed', { description: message })
+      const message = error instanceof Error ? error.message : "Unknown error";
+      toast.error("Stop failed", { description: message });
     } finally {
-      setRunRequested(createRunRequestedState())
-      setStopping(false)
+      setRunRequested(createRunRequestedState());
+      setStopping(false);
     }
-  }, [stopping])
+  }, [stopping]);
 
   const requestReview = useCallback(async () => {
-    reviewAbortRef.current?.abort()
+    reviewAbortRef.current?.abort();
 
-    const controller = new AbortController()
-    reviewAbortRef.current = controller
-    let streamedMarkdown = ''
+    const controller = new AbortController();
+    reviewAbortRef.current = controller;
+    let streamedMarkdown = "";
 
-    setReviewOpen(true)
-    setReviewLoading(true)
-    setReviewError(null)
-    setReviewMarkdown('')
+    setReviewOpen(true);
+    setReviewLoading(true);
+    setReviewError(null);
+    setReviewMarkdown("");
 
     try {
-      const reviewBase = `${window.location.protocol}//${window.location.hostname}:4000`
+      const reviewBase = `${window.location.protocol}//${window.location.hostname}:4000`;
       const diffResults = await Promise.all(
         agents.map(async (agent, index) => {
           const search = new URLSearchParams({
             agent,
             t: `${Date.now()}-${index}`,
-          })
+          });
           if (trimmedRepoUrl) {
-            search.set('repoUrl', trimmedRepoUrl)
+            search.set("repoUrl", trimmedRepoUrl);
           }
           const response = await fetch(
             `${reviewBase}/diff?${search.toString()}`,
             {
               signal: controller.signal,
             },
-          )
-          const body = await response.text()
+          );
+          const body = await response.text();
           if (!response.ok) {
-            throw new Error(`${agent}: ${body || 'Failed to load diff'}`)
+            throw new Error(`${agent}: ${body || "Failed to load diff"}`);
           }
           return {
             agent,
             diff: body.trim(),
-          }
+          };
         }),
-      )
+      );
 
-      const diffs = diffResults.filter((entry) => entry.diff.length > 0)
+      const diffs = diffResults.filter((entry) => entry.diff.length > 0);
       if (diffs.length === 0) {
         throw new Error(
-          'No agent diffs found. Run agents and make changes first.',
-        )
+          "No agent diffs found. Run agents and make changes first.",
+        );
       }
 
-      const selectedModel = getReviewModelOption(reviewModel)
+      const selectedModel = getReviewModelOption(reviewModel);
       const response = await fetch(`${reviewBase}/review`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'content-type': 'application/json',
+          "content-type": "application/json",
         },
         signal: controller.signal,
         body: JSON.stringify({
@@ -210,133 +210,133 @@ export function Dashboard() {
             diffs,
           }),
         }),
-      })
+      });
 
       if (!response.ok) {
-        const raw = (await response.text()).trim()
-        let message = raw || 'Failed to start review stream'
+        const raw = (await response.text()).trim();
+        let message = raw || "Failed to start review stream";
         if (raw) {
           try {
-            const parsed: unknown = JSON.parse(raw)
+            const parsed: unknown = JSON.parse(raw);
             if (
-              typeof parsed === 'object' &&
+              typeof parsed === "object" &&
               parsed !== null &&
-              'message' in parsed &&
-              typeof parsed.message === 'string'
+              "message" in parsed &&
+              typeof parsed.message === "string"
             ) {
-              message = parsed.message
+              message = parsed.message;
             }
           } catch {
             // non-JSON error body
           }
         }
-        throw new Error(message)
+        throw new Error(message);
       }
       if (!response.body) {
-        throw new Error('Review stream unavailable')
+        throw new Error("Review stream unavailable");
       }
 
       await readOpenRouterSseStream(response.body, (token) => {
-        streamedMarkdown += token
-        setReviewMarkdown(streamedMarkdown)
-      })
+        streamedMarkdown += token;
+        setReviewMarkdown(streamedMarkdown);
+      });
 
       if (streamedMarkdown.trim().length === 0) {
-        setReviewMarkdown('No review content returned.')
+        setReviewMarkdown("No review content returned.");
       }
     } catch (error) {
       if (controller.signal.aborted) {
-        return
+        return;
       }
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      setReviewError(`Review stream failed: ${message}`)
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setReviewError(`Review stream failed: ${message}`);
       if (streamedMarkdown.trim().length > 0) {
-        setReviewMarkdown(streamedMarkdown)
+        setReviewMarkdown(streamedMarkdown);
       } else {
-        setReviewMarkdown(null)
+        setReviewMarkdown(null);
       }
     } finally {
       if (reviewAbortRef.current === controller) {
-        reviewAbortRef.current = null
-        setReviewLoading(false)
+        reviewAbortRef.current = null;
+        setReviewLoading(false);
       }
     }
-  }, [reviewApiKey, reviewModel, trimmedRepoUrl])
+  }, [reviewApiKey, reviewModel, trimmedRepoUrl]);
 
   useEffect(
     () => () => {
-      reviewAbortRef.current?.abort()
-      reviewAbortRef.current = null
+      reviewAbortRef.current?.abort();
+      reviewAbortRef.current = null;
     },
     [],
-  )
+  );
 
   useEffect(() => {
-    if (!ws.conn) return
+    if (!ws.conn) return;
 
     const handleStatus = (event: MessageEvent) => {
-      if (typeof event.data !== 'string') return
+      if (typeof event.data !== "string") return;
       try {
-        const payload = JSON.parse(event.data)
-        if (payload?.type === 'setup-status') {
-          if (payload.status === 'start') {
-            setSetupRepoUrl(null)
-            setupToastIdRef.current = toast.loading('Setting up worktrees...', {
+        const payload = JSON.parse(event.data);
+        if (payload?.type === "setup-status") {
+          if (payload.status === "start") {
+            setSetupRepoUrl(null);
+            setupToastIdRef.current = toast.loading("Setting up worktrees...", {
               description: payload.repoUrl,
-            })
-            return
+            });
+            return;
           }
-          if (payload.status === 'success') {
+          if (payload.status === "success") {
             setSetupRepoUrl(
-              typeof payload.repoUrl === 'string'
+              typeof payload.repoUrl === "string"
                 ? payload.repoUrl.trim()
                 : null,
-            )
-            toast.success('Setup complete', {
+            );
+            toast.success("Setup complete", {
               id: setupToastIdRef.current ?? undefined,
               description: payload.repoUrl,
-            })
-            return
+            });
+            return;
           }
-          if (payload.status === 'error') {
-            setSetupRepoUrl(null)
-            toast.error('Setup failed', {
+          if (payload.status === "error") {
+            setSetupRepoUrl(null);
+            toast.error("Setup failed", {
               id: setupToastIdRef.current ?? undefined,
               description: payload.message ?? payload.repoUrl,
-            })
+            });
           }
         }
 
-        if (payload?.type === 'wipe-status') {
-          if (payload.status === 'start') {
-            setSetupRepoUrl(null)
-            wipeToastIdRef.current = toast.loading('Wiping ~/.hbench...')
-            return
+        if (payload?.type === "wipe-status") {
+          if (payload.status === "start") {
+            setSetupRepoUrl(null);
+            wipeToastIdRef.current = toast.loading("Wiping ~/.hbench...");
+            return;
           }
-          if (payload.status === 'success') {
-            setSetupRepoUrl(null)
-            toast.success('Sandbox wiped', {
+          if (payload.status === "success") {
+            setSetupRepoUrl(null);
+            toast.success("Sandbox wiped", {
               id: wipeToastIdRef.current ?? undefined,
-            })
-            return
+            });
+            return;
           }
-          if (payload.status === 'error') {
-            toast.error('Wipe failed', {
+          if (payload.status === "error") {
+            toast.error("Wipe failed", {
               id: wipeToastIdRef.current ?? undefined,
               description: payload.message,
-            })
+            });
           }
         }
       } catch (error) {
-        console.warn('Invalid status payload', error)
+        console.warn("Invalid status payload", error);
       }
-    }
+    };
 
-    ws.conn.addEventListener('message', handleStatus)
+    ws.conn.addEventListener("message", handleStatus);
     return () => {
-      ws.conn?.removeEventListener('message', handleStatus)
-    }
-  }, [ws.conn])
+      ws.conn?.removeEventListener("message", handleStatus);
+    };
+  }, [ws.conn]);
 
   return (
     <main className="flex min-h-screen w-full flex-col bg-background">
@@ -361,10 +361,10 @@ export function Dashboard() {
               onClick={() => {
                 ws.send(
                   JSON.stringify({
-                    type: 'setup',
+                    type: "setup",
                     repoUrl: trimmedRepoUrl,
                   }),
-                )
+                );
               }}
             >
               Setup
@@ -373,7 +373,7 @@ export function Dashboard() {
               size="xs"
               variant="destructive"
               onClick={() => {
-                ws.send(JSON.stringify({ type: 'wipe' }))
+                ws.send(JSON.stringify({ type: "wipe" }));
               }}
             >
               <Trash2 /> Wipe
@@ -385,20 +385,20 @@ export function Dashboard() {
             <span className="flex items-center gap-1.5">
               <span
                 className={cn(
-                  'size-1.5 rounded-full',
-                  ws.ready ? 'bg-emerald-500' : 'bg-red-400',
+                  "size-1.5 rounded-full",
+                  ws.ready ? "bg-emerald-500" : "bg-red-400",
                 )}
               />
-              {ws.ready ? 'ws' : 'offline'}
+              {ws.ready ? "ws" : "offline"}
             </span>
             <span className="flex items-center gap-1.5">
               <span
                 className={cn(
-                  'size-1.5 rounded-full',
-                  isRepoSetup ? 'bg-emerald-500' : 'bg-muted-foreground/50',
+                  "size-1.5 rounded-full",
+                  isRepoSetup ? "bg-emerald-500" : "bg-muted-foreground/50",
                 )}
               />
-              {isRepoSetup ? 'ready' : 'no repo'}
+              {isRepoSetup ? "ready" : "no repo"}
             </span>
           </div>
 
@@ -417,9 +417,9 @@ export function Dashboard() {
             value={prompt}
             onChange={(e) => setPrompt(e.currentTarget.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                runPromptOnAllAgents()
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                runPromptOnAllAgents();
               }
             }}
             placeholder="Broadcast prompt to all agents…"
@@ -457,11 +457,11 @@ export function Dashboard() {
           <Sheet
             open={reviewOpen}
             onOpenChange={(open) => {
-              setReviewOpen(open)
+              setReviewOpen(open);
               if (!open) {
-                reviewAbortRef.current?.abort()
-                reviewAbortRef.current = null
-                setReviewLoading(false)
+                reviewAbortRef.current?.abort();
+                reviewAbortRef.current = null;
+                setReviewLoading(false);
               }
             }}
           >
@@ -479,7 +479,7 @@ export function Dashboard() {
                 <Loader2 className="animate-spin" />
               ) : (
                 <MessageSquareCode />
-              )}{' '}
+              )}{" "}
               Review
             </SheetTrigger>
             <SheetContent
@@ -516,7 +516,7 @@ export function Dashboard() {
                         <Loader2 className="animate-spin" />
                       ) : (
                         <RefreshCcw />
-                      )}{' '}
+                      )}{" "}
                       Re-run
                     </Button>
                   </div>
@@ -562,7 +562,7 @@ export function Dashboard() {
         </div>
       </div>
     </main>
-  )
+  );
 }
 
 function TUI({
@@ -572,206 +572,207 @@ function TUI({
   repoUrl,
   onLaunch,
 }: {
-  name: string
-  runRequested: boolean
-  repoReady: boolean
-  repoUrl: string
-  onLaunch: () => void
+  name: string;
+  runRequested: boolean;
+  repoReady: boolean;
+  repoUrl: string;
+  onLaunch: () => void;
 }) {
-  const ws = useWS()
-  const termDivContainer = useRef<HTMLDivElement | null>(null)
-  const termInstance = useRef<Terminal | null>(null)
-  const [diffOpen, setDiffOpen] = useState(false)
-  const [diffPatch, setDiffPatch] = useState<string | null>(null)
-  const [diffError, setDiffError] = useState<string | null>(null)
-  const [diffLoading, setDiffLoading] = useState(false)
-  const [diffRepoUrl, setDiffRepoUrl] = useState<string | null>(null)
+  const ws = useWS();
+  const termDivContainer = useRef<HTMLDivElement | null>(null);
+  const termInstance = useRef<Terminal | null>(null);
+  const [diffOpen, setDiffOpen] = useState(false);
+  const [diffPatch, setDiffPatch] = useState<string | null>(null);
+  const [diffError, setDiffError] = useState<string | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffRepoUrl, setDiffRepoUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    let active = true
-    let dataDisposable: { dispose: () => void } | null = null
-    let resizeDisposable: { dispose: () => void } | null = null
-    let resizeObserver: ResizeObserver | null = null
-    let socket: WebSocket | null = null
+    let active = true;
+    let dataDisposable: { dispose: () => void } | null = null;
+    let resizeDisposable: { dispose: () => void } | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+    let socket: WebSocket | null = null;
 
     const teardownSocket = () => {
-      dataDisposable?.dispose()
-      dataDisposable = null
-      resizeDisposable?.dispose()
-      resizeDisposable = null
-      resizeObserver?.disconnect()
-      resizeObserver = null
+      dataDisposable?.dispose();
+      dataDisposable = null;
+      resizeDisposable?.dispose();
+      resizeDisposable = null;
+      resizeObserver?.disconnect();
+      resizeObserver = null;
       if (socket) {
-        socket.removeEventListener('message', handleMessage)
-        socket.removeEventListener('close', handleClose)
-        socket = null
+        socket.removeEventListener("message", handleMessage);
+        socket.removeEventListener("close", handleClose);
+        socket = null;
       }
-    }
+    };
 
     const attachSocket = (conn: WebSocket, term: Terminal) => {
-      teardownSocket()
-      socket = conn
+      teardownSocket();
+      socket = conn;
       dataDisposable = term.onData((data) => {
         socket?.send(
           JSON.stringify({
-            type: 'input',
+            type: "input",
             agent: name,
             data,
           }),
-        )
-      })
-      socket.addEventListener('message', handleMessage)
-      socket.addEventListener('close', handleClose)
-    }
+        );
+      });
+      socket.addEventListener("message", handleMessage);
+      socket.addEventListener("close", handleClose);
+    };
 
     const handleMessage = (event: MessageEvent) => {
-      const term = termInstance.current
-      if (!term) return
-      const payload = event.data
-      if (typeof payload === 'string') {
+      const term = termInstance.current;
+      if (!term) return;
+      const payload = event.data;
+      if (typeof payload === "string") {
         try {
-          const message = JSON.parse(payload)
-          if (message.type !== 'output') return
-          if (message.agent !== name) return
-          if (typeof message.data !== 'string') return
-          const decoded = atob(message.data)
-          const bytes = new Uint8Array(decoded.length)
+          const message = JSON.parse(payload);
+          if (message.type !== "output") return;
+          if (message.agent !== name) return;
+          if (typeof message.data !== "string") return;
+          const decoded = atob(message.data);
+          const bytes = new Uint8Array(decoded.length);
           for (let i = 0; i < decoded.length; i += 1) {
-            bytes[i] = decoded.charCodeAt(i)
+            bytes[i] = decoded.charCodeAt(i);
           }
-          term.write(bytes)
+          term.write(bytes);
         } catch (error) {
-          console.warn('Invalid output payload', error)
+          console.warn("Invalid output payload", error);
         }
       } else if (payload instanceof ArrayBuffer) {
-        term.write(new Uint8Array(payload))
+        term.write(new Uint8Array(payload));
       }
-    }
+    };
 
     const handleClose = () => {
-      termInstance.current?.dispose()
-      termInstance.current = null
-    }
+      termInstance.current?.dispose();
+      termInstance.current = null;
+    };
 
     const sendResize = (cols: number, rows: number) => {
-      if (!ws.conn || !ws.ready) return
+      if (!ws.conn || !ws.ready) return;
       ws.send(
         JSON.stringify({
-          type: 'resize',
+          type: "resize",
           agent: name,
           cols,
           rows,
         }),
-      )
-    }
+      );
+    };
 
     const fitTerminal = (term: Terminal) => {
-      const host = termDivContainer.current
-      if (!host || !term.renderer) return
-      const metrics = term.renderer.getMetrics()
-      if (!metrics.width || !metrics.height) return
-      const cols = Math.max(2, Math.floor(host.clientWidth / metrics.width))
-      const rows = Math.max(1, Math.floor(host.clientHeight / metrics.height))
-      term.resize(cols, rows)
-    }
+      const host = termDivContainer.current;
+      if (!host || !term.renderer) return;
+      const metrics = term.renderer.getMetrics();
+      if (!metrics.width || !metrics.height) return;
+      const cols = Math.max(2, Math.floor(host.clientWidth / metrics.width));
+      const rows = Math.max(1, Math.floor(host.clientHeight / metrics.height));
+      term.resize(cols, rows);
+    };
 
     async function ensureTerminalSetup() {
-      const host = termDivContainer.current
-      if (!host || termInstance.current) return
-      await init()
-      if (!active) return
+      const host = termDivContainer.current;
+      if (!host || termInstance.current) return;
+      await init();
+      if (!active) return;
 
       const term = new Terminal({
         fontSize: 14,
         theme: {
-          background: '#16181a',
-          foreground: '#ffffff',
-          black: '#16181a',
-          red: '#ff6e5e',
-          green: '#5eff6c',
-          yellow: '#f1ff5e',
-          blue: '#5ea1ff',
-          magenta: '#ff5ef1',
-          cyan: '#5ef1ff',
-          white: '#ffffff',
-          brightBlack: '#3c4048',
-          brightRed: '#ffbd5e',
-          brightGreen: '#5eff6c',
-          brightYellow: '#f1ff5e',
-          brightBlue: '#5ea1ff',
-          brightMagenta: '#ff5ea0',
-          brightCyan: '#5ef1ff',
-          brightWhite: '#ffffff',
+          background: "#16181a",
+          foreground: "#ffffff",
+          black: "#16181a",
+          red: "#ff6e5e",
+          green: "#5eff6c",
+          yellow: "#f1ff5e",
+          blue: "#5ea1ff",
+          magenta: "#ff5ef1",
+          cyan: "#5ef1ff",
+          white: "#ffffff",
+          brightBlack: "#3c4048",
+          brightRed: "#ffbd5e",
+          brightGreen: "#5eff6c",
+          brightYellow: "#f1ff5e",
+          brightBlue: "#5ea1ff",
+          brightMagenta: "#ff5ea0",
+          brightCyan: "#5ef1ff",
+          brightWhite: "#ffffff",
         },
-      })
-      term.open(host)
-      termInstance.current = term
-      fitTerminal(term)
+      });
+      term.open(host);
+      termInstance.current = term;
+      fitTerminal(term);
 
       resizeObserver = new ResizeObserver(() => {
         if (termInstance.current) {
-          fitTerminal(termInstance.current)
+          fitTerminal(termInstance.current);
         }
-      })
-      resizeObserver.observe(host)
+      });
+      resizeObserver.observe(host);
     }
 
     async function ensureSocketAttached() {
-      await ensureTerminalSetup()
-      if (!active || !ws.conn || !termInstance.current) return
-      attachSocket(ws.conn, termInstance.current)
+      await ensureTerminalSetup();
+      if (!active || !ws.conn || !termInstance.current) return;
+      attachSocket(ws.conn, termInstance.current);
 
       resizeDisposable = termInstance.current.onResize((size) => {
-        sendResize(size.cols, size.rows)
-      })
+        sendResize(size.cols, size.rows);
+      });
 
-      fitTerminal(termInstance.current)
-      sendResize(termInstance.current.cols, termInstance.current.rows)
+      fitTerminal(termInstance.current);
+      sendResize(termInstance.current.cols, termInstance.current.rows);
     }
 
     if (runRequested) {
-      ensureSocketAttached()
+      ensureSocketAttached();
     }
 
     return () => {
-      active = false
-      teardownSocket()
-      termInstance.current?.dispose()
-      termInstance.current = null
-    }
-  }, [runRequested, ws.conn])
+      active = false;
+      teardownSocket();
+      termInstance.current?.dispose();
+      termInstance.current = null;
+    };
+  }, [runRequested, ws.conn]);
 
   const fetchDiff = useCallback(
     async (repoUrlOverride?: string) => {
-      setDiffLoading(true)
-      setDiffError(null)
+      setDiffLoading(true);
+      setDiffError(null);
       try {
-        const repoUrlParam = repoUrlOverride ?? diffRepoUrl ?? repoUrl
-        const diffBase = `${window.location.protocol}//${window.location.hostname}:4000`
+        const repoUrlParam = repoUrlOverride ?? diffRepoUrl ?? repoUrl;
+        const diffBase = `${window.location.protocol}//${window.location.hostname}:4000`;
         const search = new URLSearchParams({
           agent: name,
           t: Date.now().toString(),
-        })
+        });
         if (repoUrlParam) {
-          search.set('repoUrl', repoUrlParam)
+          search.set("repoUrl", repoUrlParam);
         }
-        const response = await fetch(`${diffBase}/diff?${search.toString()}`)
-        const body = await response.text()
+        const response = await fetch(`${diffBase}/diff?${search.toString()}`);
+        const body = await response.text();
         if (!response.ok) {
-          throw new Error(body || 'Failed to load diff')
+          throw new Error(body || "Failed to load diff");
         }
-        const trimmed = body.trim()
-        setDiffPatch(trimmed.length > 0 ? body : null)
+        const trimmed = body.trim();
+        setDiffPatch(trimmed.length > 0 ? body : null);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        setDiffError(message)
-        setDiffPatch(null)
+        const message =
+          error instanceof Error ? error.message : "Unknown error";
+        setDiffError(message);
+        setDiffPatch(null);
       } finally {
-        setDiffLoading(false)
+        setDiffLoading(false);
       }
     },
     [diffRepoUrl, name, repoUrl],
-  )
+  );
 
   return (
     <div className="flex h-[38rem] min-h-[28rem] flex-col overflow-hidden rounded-lg border bg-[#16181a]">
@@ -779,8 +780,8 @@ function TUI({
       <div className="flex items-center gap-2 border-b border-white/[0.06] bg-[#1c1e21] px-2.5 py-1.5">
         <span
           className={cn(
-            'size-1.5 shrink-0 rounded-full',
-            runRequested ? 'bg-emerald-500 animate-pulse' : 'bg-white/20',
+            "size-1.5 shrink-0 rounded-full",
+            runRequested ? "bg-emerald-500 animate-pulse" : "bg-white/20",
           )}
         />
         <span className="text-xs font-semibold capitalize text-white/90">
@@ -791,12 +792,12 @@ function TUI({
 
         <Button
           size="icon-xs"
-          variant={runRequested ? 'secondary' : 'ghost'}
+          variant={runRequested ? "secondary" : "ghost"}
           disabled={!repoReady}
           onClick={onLaunch}
           className={cn(
-            'text-white/60 hover:text-white',
-            runRequested && 'text-white',
+            "text-white/60 hover:text-white",
+            runRequested && "text-white",
           )}
           aria-label={`Launch ${name}`}
         >
@@ -806,10 +807,10 @@ function TUI({
         <Sheet
           open={diffOpen}
           onOpenChange={(open) => {
-            setDiffOpen(open)
+            setDiffOpen(open);
             if (open) {
-              setDiffRepoUrl(repoUrl)
-              fetchDiff(repoUrl)
+              setDiffRepoUrl(repoUrl);
+              fetchDiff(repoUrl);
             }
           }}
         >
@@ -822,10 +823,10 @@ function TUI({
                 disabled={!repoReady}
                 onClick={() => {
                   if (!diffOpen) {
-                    setDiffOpen(true)
+                    setDiffOpen(true);
                   }
-                  setDiffRepoUrl(repoUrl)
-                  fetchDiff(repoUrl)
+                  setDiffRepoUrl(repoUrl);
+                  fetchDiff(repoUrl);
                 }}
               />
             }
@@ -860,7 +861,7 @@ function TUI({
         <div ref={termDivContainer} className="size-full caret-background" />
       </div>
     </div>
-  )
+  );
 }
 
 function DiffView({
@@ -868,9 +869,9 @@ function DiffView({
   error,
   patch,
 }: {
-  loading: boolean
-  error: string | null
-  patch: string | null
+  loading: boolean;
+  error: string | null;
+  patch: string | null;
 }) {
   const files = useMemo(
     () =>
@@ -878,16 +879,16 @@ function DiffView({
         ? parsePatchFiles(patch).flatMap((parsedPatch) => parsedPatch.files)
         : [],
     [patch],
-  )
+  );
 
   if (loading) {
-    return <p className="text-muted-foreground">Loading diff...</p>
+    return <p className="text-muted-foreground">Loading diff...</p>;
   }
   if (error) {
-    return <p className="text-destructive">{error}</p>
+    return <p className="text-destructive">{error}</p>;
   }
   if (!patch) {
-    return <p className="text-muted-foreground">No changes yet.</p>
+    return <p className="text-muted-foreground">No changes yet.</p>;
   }
 
   if (files.length === 0) {
@@ -895,7 +896,7 @@ function DiffView({
       <pre className="max-h-full overflow-auto rounded bg-background/60 p-3 text-xs">
         {patch}
       </pre>
-    )
+    );
   }
 
   return (
@@ -904,11 +905,11 @@ function DiffView({
         <FileDiff
           key={file.cacheKey ?? `${file.name}-${index}`}
           fileDiff={file}
-          options={{ theme: 'pierre-dark' }}
+          options={{ theme: "pierre-dark" }}
         />
       ))}
     </div>
-  )
+  );
 }
 
 function ReviewView({
@@ -916,16 +917,16 @@ function ReviewView({
   error,
   markdown,
 }: {
-  loading: boolean
-  error: string | null
-  markdown: string | null
+  loading: boolean;
+  error: string | null;
+  markdown: string | null;
 }) {
   if (!markdown && !loading && !error) {
     return (
       <p className="text-sm text-muted-foreground">
         Click Review to compare all agent diffs.
       </p>
-    )
+    );
   }
   if (!markdown && loading) {
     return (
@@ -933,18 +934,18 @@ function ReviewView({
         <Loader2 className="size-4 animate-spin" />
         Collecting diffs and sending for review…
       </div>
-    )
+    );
   }
   if (error && !markdown) {
-    return <p className="text-sm text-destructive">{error}</p>
+    return <p className="text-sm text-destructive">{error}</p>;
   }
 
   return (
     <div className="space-y-3">
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      <Streamdown isAnimating={loading} caret={loading ? 'block' : undefined}>
-        {markdown ?? ''}
+      <Streamdown isAnimating={loading} caret={loading ? "block" : undefined}>
+        {markdown ?? ""}
       </Streamdown>
     </div>
-  )
+  );
 }

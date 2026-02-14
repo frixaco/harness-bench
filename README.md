@@ -15,6 +15,7 @@ CLI agent benchmarker dashboard. Run multiple coding agents on the same task, wa
 ## Quick Start
 
 ### Requirements:
+
 - Git
 - Bun: `curl -fsSL https://bun.sh/install | bash`
 - Amp: `curl -fsSL https://ampcode.com/install.sh | bash`
@@ -25,11 +26,13 @@ CLI agent benchmarker dashboard. Run multiple coding agents on the same task, wa
 - Claude Code: `curl -fsSL https://claude.ai/install.sh | bash`
 
 Run locally without installing:
+
 ```bash
 bunx @frixaco/hbench
 ```
 
 Development:
+
 ```bash
 bun install
 bun run dev
@@ -45,4 +48,3 @@ bun run lint     # eslint
 bun run format   # prettier
 bun run check    # format + lint
 ```
-

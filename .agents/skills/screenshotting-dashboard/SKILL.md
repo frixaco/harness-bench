@@ -1,6 +1,6 @@
 ---
 name: screenshotting-dashboard
-description: 'Captures a fresh dashboard screenshot of the local hbench web app with all CLI agents running. Use when asked to update the README screenshot or verify all TUIs are active.'
+description: "Captures a fresh dashboard screenshot of the local hbench web app with all CLI agents running. Use when asked to update the README screenshot or verify all TUIs are active."
 ---
 
 # Screenshotting Dashboard

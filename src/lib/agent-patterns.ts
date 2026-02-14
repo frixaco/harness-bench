@@ -1,8 +1,8 @@
 const svg = (content: string, size: number) =>
-  `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}'>${content}</svg>`)}")`
+  `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}'>${content}</svg>`)}")`;
 
-const s = (opacity: number) => `stroke-opacity='${opacity}'`
-const f = (opacity: number) => `fill-opacity='${opacity}'`
+const s = (opacity: number) => `stroke-opacity='${opacity}'`;
+const f = (opacity: number) => `fill-opacity='${opacity}'`;
 
 const patterns: Record<string, string> = {
   amp: svg(
@@ -41,12 +41,12 @@ const patterns: Record<string, string> = {
        fill='none' stroke='white' ${s(0.06)} stroke-width='1'/>`,
     24,
   ),
-}
+};
 
 export function getAgentPattern(
   agent: string,
 ): React.CSSProperties | undefined {
-  const bg = patterns[agent]
-  if (!bg) return undefined
-  return { backgroundImage: bg, backgroundRepeat: 'repeat' }
+  const bg = patterns[agent];
+  if (!bg) return undefined;
+  return { backgroundImage: bg, backgroundRepeat: "repeat" };
 }
