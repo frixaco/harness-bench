@@ -8,6 +8,6 @@ export function App() {
 
 export default App;
 
-import "./index.css";
+import "./styles.css";
 import { Dashboard } from "./ghostty-web";
 import { WebSocketProvider } from "./lib/websocket";
