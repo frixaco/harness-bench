@@ -180,7 +180,6 @@ export function TUI({
       setDiffError(null);
       try {
         const repoUrlParam = repoUrlOverride ?? diffRepoUrl ?? repoUrl;
-        const diffBase = `${window.location.protocol}//${window.location.hostname}:4000`;
         const search = new URLSearchParams({
           agent: name,
           t: Date.now().toString(),
@@ -188,7 +187,7 @@ export function TUI({
         if (repoUrlParam) {
           search.set("repoUrl", repoUrlParam);
         }
-        const response = await fetch(`${diffBase}/diff?${search.toString()}`);
+        const response = await fetch(`/api/diff?${search.toString()}`);
         const body = await response.text();
         if (!response.ok) {
           throw new Error(body || "Failed to load diff");

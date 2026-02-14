@@ -1,4 +1,4 @@
-const importsLastRule = {
+export const importsLastRule = {
   meta: {
     type: "layout",
     fixable: "code",
@@ -140,4 +140,3 @@ const importsLastPlugin = {
 };
 
 export default importsLastPlugin;
-export { importsLastRule };
