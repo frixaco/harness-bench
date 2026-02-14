@@ -81,8 +81,7 @@
 
 @layer base {
   * {
-  }
-  html {
+    @apply border-border outline-ring/50 min-w-0;
   }
   body {
     @apply bg-background text-foreground;

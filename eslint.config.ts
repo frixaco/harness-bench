@@ -40,6 +40,20 @@ export default defineConfig([
     files: config.files ?? tsFiles,
   })),
   {
+    files: tsFiles,
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          destructuredArrayIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
+  {
     ...pluginReact.configs.flat.recommended,
     files: reactFiles,
     settings: {

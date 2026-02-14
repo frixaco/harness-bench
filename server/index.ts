@@ -1,4 +1,4 @@
-const openRouterClient = new OpenRouter({
+const _openRouterClient = new OpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
 });
 
@@ -19,7 +19,7 @@ let stopAllInFlight: Promise<void> | null = null;
 
 const agentBranchName = (agent: string) => `agent/${agent}`;
 
-const server = serve({
+const server = Bun.serve({
   routes: {
     "/*": index,
 
@@ -74,7 +74,7 @@ const server = serve({
     },
 
     "/api/review": {
-      POST(req) {
+      POST(_req) {
         return Response.json({ message: "todo" });
       },
     },
@@ -249,7 +249,7 @@ console.log(`🚀 Server running at ${server.url}`);
 const repoSlugFromUrl = (repoUrl: string) => {
   const match = repoUrl.trim().match(/[:/]([^/]+\/[^/]+?)(\.git)?$/);
   if (!match) return null;
-  return match[1]?.replace(/\.git$/, "").replace(/[\/\\]/g, "-");
+  return match[1]?.replace(/\.git$/, "").replace(/[/\\]/g, "-");
 };
 
 const runGit = async (
@@ -454,8 +454,6 @@ const ensureAgentWorktrees = async (repoUrl: string) => {
   }
 };
 
-import { Effect } from "effect";
-import { serve } from "bun";
 import { OpenRouter } from "@openrouter/sdk";
 import index from "../ui/index.html";
 
