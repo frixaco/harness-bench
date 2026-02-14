@@ -12,7 +12,12 @@ import { defineConfig } from "eslint/config";
 import importsLastPlugin from "./eslint-imports-last-plugin.js";
 
 const codeFiles = ["**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"];
-const tsFiles = ["build.ts", "src/**/*.{ts,mts,cts,tsx}", "**/*.d.ts"];
+const tsFiles = [
+  "server/**/*.{ts,mts,cts,tsx}",
+  "ui/**/*.{ts,mts,cts,tsx}",
+  "lib/**/*.{ts,mts,cts,tsx}",
+  "**/*.d.ts",
+];
 const reactFiles = ["**/*.{jsx,tsx}"];
 
 export default defineConfig([

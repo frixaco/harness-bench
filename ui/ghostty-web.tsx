@@ -924,7 +924,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import modelsJson from "./models.json";
+import modelsJson from "./lib/models.json";
 import { Button } from "./components/button";
 import { Input } from "./components/input";
 import { useWS } from "./lib/websocket";
@@ -949,4 +949,3 @@ import {
   readOpenRouterSseStream,
   reviewModelOptions,
 } from "./lib/reviewer";
-

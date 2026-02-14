@@ -4,12 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --hot src/index.ts",
-    "start": "NODE_ENV=production bun src/index.ts",
-    "build": "bun run build.ts",
+    "dev": "bun --hot server/index.ts",
+    "start": "NODE_ENV=production bun server/index.ts",
+    "build": "bun run server/build.ts",
     "format": "prettier --write .",
     "lint": "eslint",
-    "lint-fix": "eslint --fix"
+    "lint-fix": "eslint --fix",
+    "ts:ui": "bunx tsc -p ui/tsconfig.json --noEmit",
+    "ts:api": "bunx tsc -p server/tsconfig.json --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",

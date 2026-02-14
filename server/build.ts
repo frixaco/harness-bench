@@ -4,7 +4,7 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`
 🏗️  Bun Build Script
 
-Usage: bun run build.ts [options]
+Usage: bun run server/build.ts [options]
 
 Common Options:
   --outdir <path>          Output directory (default: "dist")
@@ -24,7 +24,7 @@ Common Options:
   --help, -h               Show this help message
 
 Example:
-  bun run build.ts --outdir=dist --minify --sourcemap=linked --external=react,react-dom
+  bun run server/build.ts --outdir=dist --minify --sourcemap=linked --external=react,react-dom
 `);
   process.exit(0);
 }
@@ -133,8 +133,8 @@ if (existsSync(outdir)) {
 
 const start = performance.now();
 
-const entrypoints = [...new Bun.Glob("**.html").scanSync("src")]
-  .map((a) => path.resolve("src", a))
+const entrypoints = [...new Bun.Glob("**.html").scanSync("ui")]
+  .map((a) => path.resolve("ui", a))
   .filter((dir) => !dir.includes("node_modules"));
 console.log(
   `📄 Found ${entrypoints.length} HTML ${entrypoints.length === 1 ? "file" : "files"} to process\n`,

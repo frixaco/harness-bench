@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "types": ["bun"]
+  },
+  "include": ["./**/*", "../lib/**/*", "../bun-env.d.ts"],
+  "exclude": ["../ui/**/*", "../dist", "../node_modules"]
+}

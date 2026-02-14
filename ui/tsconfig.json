@@ -1,0 +1,8 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+  },
+  "include": ["./**/*", "../lib/**/*", "../bun-env.d.ts"],
+  "exclude": ["../server/**/*", "../dist", "../node_modules"]
+}

@@ -255,59 +255,42 @@ const repoSlugFromUrl = (repoUrl: string) => {
 const runGit = async (
   args: string[],
   cwd: string,
-  output: boolean,
-): void | string => {
+): Promise<{ stdout: string; stderr: string }> => {
   const proc = Bun.spawn(["git", ...args], {
     cwd,
     stdout: "pipe",
     stderr: "pipe",
   });
-  const exitCode = await proc.exited;
+
+  const [exitCode, stdout, stderr] = await Promise.all([
+    proc.exited,
+    proc.stdout.text(),
+    proc.stderr.text(),
+  ]);
+
   if (exitCode !== 0) {
-    const stderr = await proc.stderr.text();
     throw new Error(`git ${args.join(" ")} failed: ${stderr.trim()}`);
   }
 
-  if (output) {
-    const stdout = await proc.stdout.text();
-    return stdout;
-  }
-};
-
-const runGitNoIndexDiff = async (args: string[], cwd: string) => {
-  const proc = Bun.spawn(["git", ...args], {
-    cwd,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const exitCode = await proc.exited;
-  const stdout = await new Response(proc.stdout).text();
-  if (exitCode > 1) {
-    const stderr = await new Response(proc.stderr).text();
-    throw new Error(`git ${args.join(" ")} failed: ${stderr.trim()}`);
-  }
-  return stdout;
+  return { stdout, stderr };
 };
 
 const buildWorktreeDiff = async (cwd: string) => {
-  const diff = await runGit(["-C", cwd, "diff"], cwd, true);
-  const status = await runGit(["-C", cwd, "status", "--porcelain"], cwd, true);
-  const untracked = status
+  const diff = await runGit(["-C", cwd, "diff"], cwd);
+  const status = await runGit(["-C", cwd, "status", "--porcelain"], cwd);
+  const untracked = status.stdout
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.startsWith("?? "))
     .map((line) => line.slice(3));
 
   if (untracked.length === 0) {
-    return diff;
+    return diff.stdout;
   }
 
   const untrackedDiffs = await Promise.all(
     untracked.map((file) =>
-      runGitNoIndexDiff(
-        ["-C", cwd, "diff", "--no-index", "--", "/dev/null", file],
-        cwd,
-      ),
+      runGit(["-C", cwd, "diff", "--no-index", "--", "/dev/null", file], cwd),
     ),
   );
   return [diff, ...untrackedDiffs].filter(Boolean).join("\n");
@@ -343,9 +326,7 @@ const sendAgentNotice = (
 };
 
 const wait = (ms: number) =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const waitForExit = async (proc: Bun.Subprocess, timeoutMs: number) => {
   if (proc.exitCode !== null) return true;
@@ -476,9 +457,9 @@ const ensureAgentWorktrees = async (repoUrl: string) => {
 import { Effect } from "effect";
 import { serve } from "bun";
 import { OpenRouter } from "@openrouter/sdk";
-import index from "./index.html";
+import index from "../ui/index.html";
 
 import { existsSync, mkdirSync, rmSync } from "fs";
 import os from "os";
 import path from "path";
-import agentModeMapping from "./lib/models.json";
+import agentModeMapping from "../ui/lib/models.json";
