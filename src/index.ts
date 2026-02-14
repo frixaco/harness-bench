@@ -1,12 +1,12 @@
 import { Effect } from "effect";
 import { serve } from "bun";
-import OpenRouter from "@openrouter/sdk";
+import { OpenRouter } from "@openrouter/sdk";
 import index from "./index.html";
 
 import { existsSync, mkdirSync, rmSync } from "fs";
 import os from "os";
 import path from "path";
-import agentModeMapping from "./models.json";
+import agentModeMapping from "./lib/models.json";
 
 const openRouterClient = new OpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
