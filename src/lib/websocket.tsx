@@ -1,5 +1,3 @@
-import { createContext, useContext, useEffect, useState } from "react";
-
 const WebSocketContext = createContext<WebSocket | null>(null);
 
 export function useWS() {
@@ -69,3 +67,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
   return <WebSocketContext value={conn}>{children}</WebSocketContext>;
 }
+
+import { createContext, useContext, useEffect, useState } from "react";
+

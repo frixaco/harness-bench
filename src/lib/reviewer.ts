@@ -1,13 +1,10 @@
-const reviewReasoningEfforts = [
-  "xhigh",
-  "high",
-  "medium",
-  "low",
-  "minimal",
-  "none",
-] as const;
-
-export type ReviewReasoningEffort = (typeof reviewReasoningEfforts)[number];
+type ReviewReasoningEffort =
+  | "xhigh"
+  | "high"
+  | "medium"
+  | "low"
+  | "minimal"
+  | "none";
 
 export type ReviewModelOption = {
   id: string;

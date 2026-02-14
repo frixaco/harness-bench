@@ -1,45 +1,3 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Terminal, init } from "ghostty-web";
-import { parsePatchFiles } from "@pierre/diffs";
-import { FileDiff } from "@pierre/diffs/react";
-import { Streamdown } from "streamdown";
-import {
-  Columns2,
-  Loader2,
-  MessageSquareCode,
-  Play,
-  RefreshCcw,
-  Send,
-  Square,
-  Trash2,
-} from "lucide-react";
-import { toast } from "sonner";
-import modelsJson from "./models.json";
-import { Button } from "./components/button";
-import { Input } from "./components/input";
-import { useWS } from "./lib/websocket";
-import { ThemeToggle } from "./components/theme";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "./components/sheet";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./components/select";
-import { cn } from "./lib/utils";
-import {
-  buildReviewMessages,
-  readOpenRouterSseStream,
-  reviewModelOptions,
-} from "./lib/reviewer";
-
 const agents = Object.keys(modelsJson as Record<string, unknown>);
 const reviewModels = reviewModelOptions.map((option) => option.id);
 const getReviewModelOption = (modelId: string) =>
@@ -949,3 +907,46 @@ function ReviewView({
     </div>
   );
 }
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Terminal, init } from "ghostty-web";
+import { parsePatchFiles } from "@pierre/diffs";
+import { FileDiff } from "@pierre/diffs/react";
+import { Streamdown } from "streamdown";
+import {
+  Columns2,
+  Loader2,
+  MessageSquareCode,
+  Play,
+  RefreshCcw,
+  Send,
+  Square,
+  Trash2,
+} from "lucide-react";
+import { toast } from "sonner";
+import modelsJson from "./models.json";
+import { Button } from "./components/button";
+import { Input } from "./components/input";
+import { useWS } from "./lib/websocket";
+import { ThemeToggle } from "./components/theme";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "./components/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./components/select";
+import { cn } from "./lib/utils";
+import {
+  buildReviewMessages,
+  readOpenRouterSseStream,
+  reviewModelOptions,
+} from "./lib/reviewer";
+

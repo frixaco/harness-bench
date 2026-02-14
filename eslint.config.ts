@@ -6,7 +6,7 @@ import tseslint from "typescript-eslint";
 import pluginReact from "eslint-plugin-react";
 import json from "@eslint/json";
 import markdown from "@eslint/markdown";
-import css from "@eslint/css";
+// import css from "@eslint/css";
 import gitignore from "eslint-config-flat-gitignore";
 import { defineConfig } from "eslint/config";
 import importsLastPlugin from "./eslint-imports-last-plugin.js";
@@ -79,10 +79,10 @@ export default defineConfig([
     language: "markdown/gfm",
     extends: ["markdown/recommended"],
   },
-  {
-    files: ["**/*.css"],
-    plugins: { css },
-    language: "css/css",
-    extends: ["css/recommended"],
-  },
+  // {
+  //   files: ["**/*.css"],
+  //   plugins: { css },
+  //   language: "css/css",
+  //   extends: ["css/recommended"],
+  // },
 ]);

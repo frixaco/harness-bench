@@ -1,8 +1,4 @@
 #!/usr/bin/env bun
-import plugin from "bun-plugin-tailwind";
-import { existsSync } from "fs";
-import { rm } from "fs/promises";
-import path from "path";
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`
@@ -36,7 +32,7 @@ Example:
 const toCamelCase = (str: string): string =>
   str.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
 
-const parseValue = (value: string): any => {
+const parseValue = (value: string): string | boolean | number | string[] => {
   if (value === "true") return true;
   if (value === "false") return false;
 
@@ -169,3 +165,8 @@ console.table(outputTable);
 const buildTime = (end - start).toFixed(2);
 
 console.log(`\n✅ Build completed in ${buildTime}ms\n`);
+
+import plugin from "bun-plugin-tailwind";
+import { existsSync } from "fs";
+import { rm } from "fs/promises";
+import path from "path";
