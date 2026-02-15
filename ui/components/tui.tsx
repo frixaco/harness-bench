@@ -21,6 +21,7 @@ export function TUI({
   const [diffError, setDiffError] = useState<string | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffRepoUrl, setDiffRepoUrl] = useState<string | null>(null);
+  const headerPattern = getAgentPattern(name.toLowerCase());
 
   useEffect(() => {
     let active = true;
@@ -211,7 +212,10 @@ export function TUI({
   return (
     <div className="flex h-[38rem] min-h-[28rem] flex-col overflow-hidden rounded-lg border bg-[#16181a]">
       {/* Card header: agent name + model + actions */}
-      <div className="flex items-center gap-2 border-b border-white/[0.06] bg-[#1c1e21] px-2.5 py-1.5">
+      <div
+        className="flex items-center gap-2 border-b border-white/[0.06] bg-[#1c1e21] px-2.5 py-1.5"
+        style={headerPattern}
+      >
         <span
           className={cn(
             "size-1.5 shrink-0 rounded-full",
@@ -302,6 +306,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal, init } from "ghostty-web";
 import { Columns2, Play, RefreshCcw } from "lucide-react";
 import { Button } from "./button";
+import { getAgentPattern } from "@/lib/agent-patterns";
 import { useWS } from "@/lib/websocket";
 import {
   Sheet,

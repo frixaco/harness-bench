@@ -100,7 +100,7 @@ export function Dashboard() {
       <CommandBar />
 
       <div className="flex-1 px-3 pt-3 pb-4">
-        <div className="mx-auto grid max-w-480 gap-2 grid-cols-[repeat(auto-fit,minmax(420px,1fr))]">
+        <div className="mx-auto grid max-w-480 gap-3 grid-cols-[repeat(auto-fit,minmax(420px,1fr))]">
           {agents.map((agent) => (
             <TUI
               key={agent}

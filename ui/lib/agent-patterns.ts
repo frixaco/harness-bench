@@ -4,43 +4,118 @@ const svg = (content: string, size: number) =>
 const s = (opacity: number) => `stroke-opacity='${opacity}'`;
 const f = (opacity: number) => `fill-opacity='${opacity}'`;
 
+const n = (value: number) => value.toFixed(2);
+
+const hash = (value: string) => {
+  let hashed = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hashed ^= value.charCodeAt(i);
+    hashed = Math.imul(hashed, 16777619);
+  }
+  return hashed >>> 0;
+};
+
+const createRng = (seed: string) => {
+  let state = hash(seed) || 1;
+  return () => {
+    state += 0x6d2b79f5;
+    let value = Math.imul(state ^ (state >>> 15), state | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
+type ShapeFactory = (x: number, y: number, rand: () => number) => string;
+
+const randomPattern = (
+  seed: string,
+  size: number,
+  count: number,
+  shapeFactory: ShapeFactory,
+) => {
+  const rand = createRng(seed);
+  const margin = 6;
+  let content = "";
+
+  for (let i = 0; i < count; i += 1) {
+    const x = margin + rand() * (size - margin * 2);
+    const y = margin + rand() * (size - margin * 2);
+    content += shapeFactory(x, y, rand);
+  }
+
+  return svg(content, size);
+};
+
+const starPath = (cx: number, cy: number, radius: number) => {
+  const inner = radius * 0.45;
+  let path = "";
+
+  for (let i = 0; i < 10; i += 1) {
+    const angle = -Math.PI / 2 + (Math.PI * i) / 5;
+    const distance = i % 2 === 0 ? radius : inner;
+    const px = cx + Math.cos(angle) * distance;
+    const py = cy + Math.sin(angle) * distance;
+    path += `${i === 0 ? "M" : "L"}${n(px)} ${n(py)} `;
+  }
+
+  return `${path}Z`;
+};
+
+const petalPath = (cx: number, cy: number, width: number, height: number) =>
+  `M${n(cx)} ${n(cy - height)}
+   Q${n(cx + width)} ${n(cy - height * 0.55)} ${n(cx + width * 1.35)} ${n(cy)}
+   Q${n(cx + width)} ${n(cy + height * 0.55)} ${n(cx)} ${n(cy + height)}
+   Q${n(cx - width)} ${n(cy + height * 0.55)} ${n(cx - width * 1.35)} ${n(cy)}
+   Q${n(cx - width)} ${n(cy - height * 0.55)} ${n(cx)} ${n(cy - height)} Z`;
+
 const patterns: Record<string, string> = {
-  amp: svg(
-    `<line x1='0' y1='0' x2='20' y2='20' stroke='white' ${s(0.06)} stroke-width='1.5'/>
-     <line x1='20' y1='0' x2='0' y2='20' stroke='white' ${s(0.04)} stroke-width='1'/>`,
-    20,
-  ),
+  amp: randomPattern("amp", 80, 18, (x, y, rand) => {
+    const arm = 2 + rand() * 2.8;
+    return `<line x1='${n(x - arm)}' y1='${n(y - arm)}' x2='${n(x + arm)}' y2='${n(y + arm)}' stroke='white' ${s(0.06)} stroke-width='1.4'/>
+     <line x1='${n(x + arm)}' y1='${n(y - arm)}' x2='${n(x - arm)}' y2='${n(y + arm)}' stroke='white' ${s(0.04)} stroke-width='1'/>`;
+  }),
 
-  droid: svg(
-    `<rect x='4' y='4' width='16' height='10' rx='1' fill='none' stroke='white' ${s(0.06)} stroke-width='1'/>
-     <line x1='4' y1='18' x2='20' y2='18' stroke='white' ${s(0.04)} stroke-width='1'/>`,
-    24,
-  ),
+  droid: randomPattern("droid", 84, 16, (x, y, rand) => {
+    const width = 5 + rand() * 4;
+    const height = 3 + rand() * 2.5;
+    const left = x - width / 2;
+    const top = y - height / 2;
+    const baseY = top + height + 1.5;
+    return `<rect x='${n(left)}' y='${n(top)}' width='${n(width)}' height='${n(height)}' rx='1' fill='none' stroke='white' ${s(0.06)} stroke-width='1'/>
+     <line x1='${n(left)}' y1='${n(baseY)}' x2='${n(left + width)}' y2='${n(baseY)}' stroke='white' ${s(0.04)} stroke-width='1'/>`;
+  }),
 
-  pi: svg(
-    `<circle cx='10' cy='10' r='4' fill='none' stroke='white' ${s(0.06)} stroke-width='1'/>
-     <circle cx='22' cy='22' r='2' fill='white' ${f(0.03)}/>`,
-    28,
-  ),
+  pi: randomPattern("pi", 82, 18, (x, y, rand) => {
+    const ring = 1.7 + rand() * 1.8;
+    const dot = 0.7 + rand() * 1.1;
+    const offsetX = (rand() - 0.5) * 6;
+    const offsetY = (rand() - 0.5) * 6;
+    return `<circle cx='${n(x)}' cy='${n(y)}' r='${n(ring)}' fill='none' stroke='white' ${s(0.06)} stroke-width='1'/>
+     <circle cx='${n(x + offsetX)}' cy='${n(y + offsetY)}' r='${n(dot)}' fill='white' ${f(0.03)}/>`;
+  }),
 
-  opencode: svg(
-    `<rect x='3' y='3' width='8' height='8' fill='none' stroke='white' ${s(0.06)} stroke-width='1'/>
-     <rect x='14' y='14' width='5' height='5' fill='white' ${f(0.03)}/>`,
-    22,
-  ),
+  opencode: randomPattern("opencode", 80, 16, (x, y, rand) => {
+    const outer = 2.4 + rand() * 2.2;
+    const inner = 1.2 + rand() * 1.4;
+    const innerX = x + (rand() - 0.5) * 4.5;
+    const innerY = y + (rand() - 0.5) * 4.5;
+    return `<rect x='${n(x - outer)}' y='${n(y - outer)}' width='${n(outer * 2)}' height='${n(outer * 2)}' fill='none' stroke='white' ${s(0.06)} stroke-width='1'/>
+     <rect x='${n(innerX - inner)}' y='${n(innerY - inner)}' width='${n(inner * 2)}' height='${n(inner * 2)}' fill='white' ${f(0.03)}/>`;
+  }),
 
-  claude: svg(
-    `<path d='M12 2 L14 8 L20 8 L15 12 L17 18 L12 14 L7 18 L9 12 L4 8 L10 8 Z'
-       fill='none' stroke='white' ${s(0.06)} stroke-width='1'/>`,
-    24,
-  ),
+  claude: randomPattern("claude", 86, 14, (x, y, rand) => {
+    const radius = 2.8 + rand() * 2.2;
+    return `<path d='${starPath(x, y, radius)}' fill='none' stroke='white' ${s(0.06)} stroke-width='1'/>`;
+  }),
 
-  codex: svg(
-    `<path d='M12 2 Q14 6 18 7 Q14 8 12 12 Q10 8 6 7 Q10 6 12 2 Z
-             M12 12 Q14 16 18 17 Q14 18 12 22 Q10 18 6 17 Q10 16 12 12 Z'
-       fill='none' stroke='white' ${s(0.06)} stroke-width='1'/>`,
-    24,
-  ),
+  codex: randomPattern("codex", 88, 14, (x, y, rand) => {
+    const width = 1.9 + rand() * 1.8;
+    const height = 1.7 + rand() * 1.6;
+    const gap = 1.1 + rand() * 1.2;
+    const top = petalPath(x, y - gap, width, height);
+    const bottom = petalPath(x, y + gap, width, height);
+    return `<path d='${top} ${bottom}' fill='none' stroke='white' ${s(0.06)} stroke-width='1'/>`;
+  }),
 };
 
 export function getAgentPattern(
