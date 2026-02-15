@@ -17,6 +17,7 @@ https://github.com/user-attachments/assets/eb489f56-fbc7-4e8e-adb2-c232411303d2
 ### Requirements:
 
 - Git
+- `OPENROUTER_API_KEY` (add to PATH or provide in UI)
 - Bun: `curl -fsSL https://bun.sh/install | bash`
 - Amp: `curl -fsSL https://ampcode.com/install.sh | bash`
 - Droid: `curl -fsSL https://app.factory.ai/cli | sh`
@@ -31,6 +32,8 @@ Run locally without installing:
 bunx @frixaco/hbench
 ```
 
+`bunx @frixaco/hbench` runs the prebuilt `dist` server bundle shipped in the package.
+
 Development:
 
 ```bash
@@ -41,10 +44,11 @@ bun run dev
 ## Commands
 
 ```bash
-bun run dev      # UI + PTY + REST server
-bun run build    # production build
-bun run start    # for hosting environment
-bun run lint     # eslint
-bun run format   # prettier
-bun run check    # format + lint
+bun run dev                     # UI + PTY + REST server
+bun run build                   # build fullstack server bundle into dist/
+bun run start                   # run dist bundle (production runtime)
+bun run lint                    # eslint
+bun run format                  # prettier
+bun run check                   # format + lint
+bun publish --access public     # publish new version
 ```

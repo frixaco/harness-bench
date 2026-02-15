@@ -10,7 +10,7 @@ Common Options:
   --outdir <path>          Output directory (default: "dist")
   --minify                 Enable minification (or --minify.whitespace, --minify.syntax, etc)
   --sourcemap <type>      Sourcemap type: none|linked|inline|external
-  --target <target>        Build target: browser|bun|node
+  --target <target>        Build target (default: bun)
   --format <format>        Output format: esm|cjs|iife
   --splitting              Enable code splitting
   --packages <type>        Package handling: bundle|external
@@ -24,7 +24,7 @@ Common Options:
   --help, -h               Show this help message
 
 Example:
-  bun run server/build.ts --outdir=dist --minify --sourcemap=linked --external=react,react-dom
+  bun run server/build.ts --outdir=dist --minify --sourcemap=linked
 `);
   process.exit(0);
 }
@@ -124,7 +124,12 @@ const formatFileSize = (bytes: number): string => {
 console.log("\n🚀 Starting build process...\n");
 
 const cliConfig = parseArgs();
-const outdir = cliConfig.outdir || path.join(process.cwd(), "dist");
+const outdir =
+  typeof cliConfig.outdir === "string"
+    ? cliConfig.outdir
+    : path.join(process.cwd(), "dist");
+
+delete cliConfig.outdir;
 
 if (existsSync(outdir)) {
   console.log(`🗑️ Cleaning previous build at ${outdir}`);
@@ -132,26 +137,32 @@ if (existsSync(outdir)) {
 }
 
 const start = performance.now();
-
-const entrypoints = [...new Bun.Glob("**.html").scanSync("ui")]
-  .map((a) => path.resolve("ui", a))
-  .filter((dir) => !dir.includes("node_modules"));
-console.log(
-  `📄 Found ${entrypoints.length} HTML ${entrypoints.length === 1 ? "file" : "files"} to process\n`,
-);
+const serverEntrypoint = path.resolve("server/index.ts");
+console.log(`📦 Building server entrypoint ${serverEntrypoint}\n`);
 
 const result = await Bun.build({
-  entrypoints,
+  entrypoints: [serverEntrypoint],
   outdir,
   plugins: [plugin],
+  naming: {
+    entry: "[name].[ext]",
+  },
   minify: true,
-  target: "browser",
-  sourcemap: "linked",
+  target: "bun",
+  sourcemap: "none",
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
   },
   ...cliConfig,
 });
+
+if (!result.success) {
+  console.error("❌ Build failed\n");
+  for (const log of result.logs) {
+    console.error(log);
+  }
+  process.exit(1);
+}
 
 const end = performance.now();
 

@@ -1,12 +1,24 @@
 {
-  "name": "hbench",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@frixaco/hbench",
+  "version": "0.2.0",
   "type": "module",
+  "bin": {
+    "hbench": "./bin/hbench.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE*"
+  ],
   "scripts": {
     "dev": "bun --hot server/index.ts",
-    "start": "NODE_ENV=production bun server/index.ts",
+    "start": "NODE_ENV=production bun --cwd dist index.js",
     "build": "bun run server/build.ts",
+    "prepack": "bun run build",
     "format": "prettier --write .",
     "lint": "eslint",
     "lint-fix": "eslint --fix",

@@ -5,6 +5,9 @@ const agents = Object.keys(agentModeMapping);
 const defaultCols = 80;
 const defaultRows = 24;
 const sandboxRoot = path.join(os.homedir(), ".hbench");
+const portFromEnv = parsePort(
+  process.env.BUN_PORT ?? process.env.PORT ?? process.env.NODE_PORT,
+);
 const serverIdleTimeoutSeconds = 120;
 const stopDelayMs = {
   interrupt: 250,
@@ -17,6 +20,7 @@ let stopAllInFlight: Promise<void> | null = null;
 const agentBranchName = (agent: string) => `agent/${agent}`;
 
 const server = Bun.serve({
+  ...(portFromEnv ? { port: portFromEnv } : {}),
   idleTimeout: serverIdleTimeoutSeconds,
   routes: {
     "/*": index,
@@ -280,6 +284,17 @@ const repoSlugFromUrl = (repoUrl: string) => {
   if (!match) return null;
   return match[1]?.replace(/\.git$/, "").replace(/[/\\]/g, "-");
 };
+
+function parsePort(value: string | undefined) {
+  if (!value) return null;
+  if (!/^\d+$/.test(value)) return null;
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isSafeInteger(parsed)) return null;
+  if (parsed < 1 || parsed > 65535) return null;
+
+  return parsed;
+}
 
 const runGit = async (
   args: string[],
