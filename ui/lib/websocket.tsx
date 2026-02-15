@@ -1,7 +1,3 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-import { useDashboardStore } from "./store";
-
 const WebSocketContext = createContext<WebSocket | null>(null);
 
 export function useWS() {
@@ -71,11 +67,17 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       try {
         const payload = JSON.parse(event.data);
         if (payload?.type === "setup-status") {
+          const isUseExisting = payload.mode === "existing";
           if (payload.status === "start") {
             setSetupRepoUrl(null);
-            setupToastIdRef.current = toast.loading("Setting up worktrees...", {
-              description: payload.repoUrl,
-            });
+            setupToastIdRef.current = toast.loading(
+              isUseExisting
+                ? "Loading existing worktrees..."
+                : "Setting up worktrees...",
+              {
+                description: payload.repoUrl,
+              },
+            );
             return;
           }
           if (payload.status === "success") {
@@ -84,18 +86,24 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                 ? payload.repoUrl.trim()
                 : null,
             );
-            toast.success("Setup complete", {
-              id: setupToastIdRef.current ?? undefined,
-              description: payload.repoUrl,
-            });
+            toast.success(
+              isUseExisting ? "Using existing worktrees" : "Setup complete",
+              {
+                id: setupToastIdRef.current ?? undefined,
+                description: payload.repoUrl,
+              },
+            );
             return;
           }
           if (payload.status === "error") {
             setSetupRepoUrl(null);
-            toast.error("Setup failed", {
-              id: setupToastIdRef.current ?? undefined,
-              description: payload.message ?? payload.repoUrl,
-            });
+            toast.error(
+              isUseExisting ? "Use Existing failed" : "Setup failed",
+              {
+                id: setupToastIdRef.current ?? undefined,
+                description: payload.message ?? payload.repoUrl,
+              },
+            );
           }
         }
 
@@ -132,3 +140,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
   return <WebSocketContext value={conn}>{children}</WebSocketContext>;
 }
+
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useDashboardStore } from "./store";

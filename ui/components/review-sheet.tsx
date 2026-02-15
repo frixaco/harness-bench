@@ -6,8 +6,7 @@ export function ReviewSheet({
   repoUrl: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [markdown, setMarkdown] = useState<string | null>(null);
+  const [collectingDiffs, setCollectingDiffs] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reviewModel, setReviewModel] = useState(
     reviewModelOptions[0]?.id ?? "",
@@ -15,26 +14,62 @@ export function ReviewSheet({
   const [reviewApiKey, setReviewApiKey] = useState("");
 
   const reviewAbortRef = useRef<AbortController | null>(null);
+  const requestInFlightRef = useRef(false);
+
+  const {
+    completion,
+    complete,
+    error: completionError,
+    isLoading,
+    setCompletion,
+    stop,
+  } = useCompletion({
+    api: "/api/review",
+    streamProtocol: "text",
+    experimental_throttle: 60,
+  });
+
+  const loading = collectingDiffs || isLoading;
+  const markdown = completion.length > 0 ? completion : null;
+
+  const abortDiffCollection = useCallback(() => {
+    reviewAbortRef.current?.abort();
+    reviewAbortRef.current = null;
+  }, []);
+
+  const stopReview = useCallback(() => {
+    stop();
+  }, [stop]);
 
   useEffect(
     () => () => {
-      reviewAbortRef.current?.abort();
-      reviewAbortRef.current = null;
+      abortDiffCollection();
+      stopReview();
     },
-    [],
+    [abortDiffCollection, stopReview],
   );
 
+  useEffect(() => {
+    if (!completionError) return;
+    setError(`Review stream failed: ${completionError.message}`);
+  }, [completionError]);
+
   const requestReview = useCallback(async () => {
-    reviewAbortRef.current?.abort();
+    if (requestInFlightRef.current) {
+      return;
+    }
+    requestInFlightRef.current = true;
+
+    abortDiffCollection();
+    stopReview();
 
     const controller = new AbortController();
     reviewAbortRef.current = controller;
-    let streamedMarkdown = "";
 
     setOpen(true);
-    setLoading(true);
+    setCollectingDiffs(true);
     setError(null);
-    setMarkdown("");
+    setCompletion("");
 
     try {
       const diffResults = await Promise.all(
@@ -77,79 +112,48 @@ export function ReviewSheet({
         throw new Error("No review model configured");
       }
 
-      const response = await fetch("/api/review", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
+      setCollectingDiffs(false);
+      const output = await complete(buildReviewPrompt({ repoUrl, diffs }), {
+        body: {
           model: selectedModel.id,
           apiKey: reviewApiKey.trim() || undefined,
-          reasoningEffort: selectedModel.reasoningEffort,
-          messages: buildReviewMessages({
-            repoUrl,
-            diffs,
-          }),
-        }),
+        },
       });
 
-      if (!response.ok) {
-        const raw = (await response.text()).trim();
-        let message = raw || "Failed to start review stream";
-
-        if (raw) {
-          try {
-            const parsed: unknown = JSON.parse(raw);
-            if (
-              typeof parsed === "object" &&
-              parsed !== null &&
-              "message" in parsed &&
-              typeof parsed.message === "string"
-            ) {
-              message = parsed.message;
-            }
-          } catch {
-            // non-JSON error body
-          }
-        }
-
-        throw new Error(message);
-      }
-
-      if (!response.body) {
-        throw new Error("Review stream unavailable");
-      }
-
-      await readOpenRouterSseStream(response.body, (token) => {
-        streamedMarkdown += token;
-        setMarkdown(streamedMarkdown);
-      });
-
-      if (streamedMarkdown.trim().length === 0) {
-        setMarkdown("No review content returned.");
+      if (
+        !controller.signal.aborted &&
+        typeof output === "string" &&
+        output.trim().length === 0
+      ) {
+        setCompletion("No review content returned.");
       }
     } catch (nextError) {
-      if (controller.signal.aborted) {
+      if (
+        controller.signal.aborted ||
+        (nextError instanceof Error && nextError.name === "AbortError")
+      ) {
         return;
       }
 
       const message =
         nextError instanceof Error ? nextError.message : "Unknown error";
       setError(`Review stream failed: ${message}`);
-
-      if (streamedMarkdown.trim().length > 0) {
-        setMarkdown(streamedMarkdown);
-      } else {
-        setMarkdown(null);
-      }
     } finally {
       if (reviewAbortRef.current === controller) {
         reviewAbortRef.current = null;
-        setLoading(false);
       }
+      setCollectingDiffs(false);
+      requestInFlightRef.current = false;
     }
-  }, [repoUrl, reviewApiKey, reviewModel]);
+  }, [
+    abortDiffCollection,
+    complete,
+    repoUrl,
+    reviewApiKey,
+    reviewModel,
+    setCompletion,
+    stopReview,
+  ]);
 
   return (
     <Sheet
@@ -157,9 +161,10 @@ export function ReviewSheet({
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
         if (!nextOpen) {
-          reviewAbortRef.current?.abort();
-          reviewAbortRef.current = null;
-          setLoading(false);
+          abortDiffCollection();
+          stopReview();
+          setCollectingDiffs(false);
+          requestInFlightRef.current = false;
         }
       }}
     >
@@ -168,8 +173,7 @@ export function ReviewSheet({
           <Button
             size="xs"
             variant="outline"
-            disabled={!repoReady}
-            onClick={() => void requestReview()}
+            disabled={!repoReady || loading}
           />
         }
       >
@@ -213,7 +217,7 @@ export function ReviewSheet({
                 ) : (
                   <RefreshCcw />
                 )}{" "}
-                Re-run
+                Run
               </Button>
             </div>
             <Input
@@ -237,6 +241,7 @@ export function ReviewSheet({
 }
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useCompletion } from "@ai-sdk/react";
 import { Loader2, MessageSquareCode, RefreshCcw } from "lucide-react";
 import { Button } from "./button";
 import { Input } from "./input";
@@ -250,8 +255,4 @@ import {
   SelectValue,
 } from "./select";
 import { agents } from "@/lib/store";
-import {
-  buildReviewMessages,
-  readOpenRouterSseStream,
-  reviewModelOptions,
-} from "@/lib/reviewer";
+import { buildReviewPrompt, reviewModelOptions } from "@/lib/reviewer";

@@ -10,7 +10,7 @@ Locally.
 - Tailwind 4 + shadcn/base-ui
 - `ghostty-web` terminal renderer with optional `xtermjs` and `restty` versions
 - `@pierre/diffs` for patch rendering
-- OpenRouter for diff review feature
+- AI SDK for diff review feature
 
 ## Runtime Requirements
 

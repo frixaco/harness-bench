@@ -1,7 +1,3 @@
-const _openRouterClient = new OpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY,
-});
-
 const procs = new Map<string, Bun.Subprocess>();
 const agentWorktrees = new Map<string, string>();
 
@@ -9,6 +5,7 @@ const agents = Object.keys(agentModeMapping);
 const defaultCols = 80;
 const defaultRows = 24;
 const sandboxRoot = path.join(os.homedir(), ".hbench");
+const serverIdleTimeoutSeconds = 120;
 const stopDelayMs = {
   interrupt: 250,
   secondInterrupt: 350,
@@ -20,6 +17,7 @@ let stopAllInFlight: Promise<void> | null = null;
 const agentBranchName = (agent: string) => `agent/${agent}`;
 
 const server = Bun.serve({
+  idleTimeout: serverIdleTimeoutSeconds,
   routes: {
     "/*": index,
 
@@ -74,8 +72,8 @@ const server = Bun.serve({
     },
 
     "/api/review": {
-      POST(_req) {
-        return Response.json({ message: "todo" });
+      POST(req) {
+        return handleReviewPost(req);
       },
     },
 
@@ -184,6 +182,37 @@ const server = Bun.serve({
             }
             return;
           }
+          if (payload.type === "use-existing") {
+            const repoUrl = payload.repoUrl;
+            if (!repoUrl || typeof repoUrl !== "string") {
+              sendStatus(ws, "setup-status", "error", {
+                message: "Missing repository URL",
+                mode: "existing",
+              });
+              return;
+            }
+            try {
+              sendStatus(ws, "setup-status", "start", {
+                repoUrl,
+                mode: "existing",
+              });
+              loadExistingAgentWorktrees(repoUrl);
+              sendStatus(ws, "setup-status", "success", {
+                repoUrl,
+                mode: "existing",
+              });
+            } catch (error) {
+              const errorMessage =
+                error instanceof Error ? error.message : "Unknown error";
+              sendStatus(ws, "setup-status", "error", {
+                repoUrl,
+                mode: "existing",
+                message: errorMessage,
+              });
+              console.warn("Use existing worktrees failed", error);
+            }
+            return;
+          }
           if (payload.type === "input") {
             const agent = payload.agent;
             if (!agent || typeof agent !== "string") return;
@@ -255,6 +284,7 @@ const repoSlugFromUrl = (repoUrl: string) => {
 const runGit = async (
   args: string[],
   cwd: string,
+  acceptedExitCodes: number[] = [0],
 ): Promise<{ stdout: string; stderr: string }> => {
   const proc = Bun.spawn(["git", ...args], {
     cwd,
@@ -268,7 +298,7 @@ const runGit = async (
     proc.stderr.text(),
   ]);
 
-  if (exitCode !== 0) {
+  if (!acceptedExitCodes.includes(exitCode)) {
     throw new Error(`git ${args.join(" ")} failed: ${stderr.trim()}`);
   }
 
@@ -290,10 +320,16 @@ const buildWorktreeDiff = async (cwd: string) => {
 
   const untrackedDiffs = await Promise.all(
     untracked.map((file) =>
-      runGit(["-C", cwd, "diff", "--no-index", "--", "/dev/null", file], cwd),
+      runGit(
+        ["-C", cwd, "diff", "--no-index", "--", "/dev/null", file],
+        cwd,
+        [0, 1],
+      ),
     ),
   );
-  return [diff, ...untrackedDiffs].filter(Boolean).join("\n");
+  return [diff.stdout, ...untrackedDiffs.map((entry) => entry.stdout)]
+    .filter(Boolean)
+    .join("\n");
 };
 
 const sendStatus = (
@@ -454,10 +490,35 @@ const ensureAgentWorktrees = async (repoUrl: string) => {
   }
 };
 
-import { OpenRouter } from "@openrouter/sdk";
+const loadExistingAgentWorktrees = (repoUrl: string) => {
+  const slug = repoSlugFromUrl(repoUrl);
+  if (!slug) throw new Error("Invalid repository URL");
+
+  const repoRoot = path.join(sandboxRoot, slug);
+  const worktreeRoot = path.join(repoRoot, "worktrees");
+  if (!existsSync(worktreeRoot)) {
+    throw new Error("No existing worktrees found. Run SETUP first.");
+  }
+
+  const missingAgents = agents.filter(
+    (agent) => !existsSync(path.join(worktreeRoot, agent)),
+  );
+  if (missingAgents.length > 0) {
+    throw new Error(
+      `Missing worktrees for: ${missingAgents.join(", ")}. Run SETUP to recreate.`,
+    );
+  }
+
+  for (const agent of agents) {
+    const worktreePath = path.join(worktreeRoot, agent);
+    agentWorktrees.set(agent, worktreePath);
+  }
+};
+
 import index from "../ui/index.html";
 
 import { existsSync, mkdirSync, rmSync } from "fs";
 import os from "os";
 import path from "path";
+import { handleReviewPost } from "./review";
 import agentModeMapping from "../ui/lib/models.json";

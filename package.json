@@ -14,12 +14,14 @@
     "ts:api": "bunx tsc -p server/tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/react": "^3.0.88",
     "@base-ui/react": "^1.2.0",
-    "@openrouter/sdk": "^0.8.0",
+    "@openrouter/ai-sdk-provider": "^2.2.3",
     "@pierre/diffs": "^1.0.11",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^6.0.0",
+    "ai": "^6.0.86",
     "bun-plugin-tailwind": "^0.1.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

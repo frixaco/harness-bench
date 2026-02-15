@@ -46,6 +46,21 @@ export function Dashboard() {
             </Button>
             <Button
               size="xs"
+              variant="outline"
+              disabled={trimmedRepoUrl.length === 0}
+              onClick={() => {
+                ws.send(
+                  JSON.stringify({
+                    type: "use-existing",
+                    repoUrl: trimmedRepoUrl,
+                  }),
+                );
+              }}
+            >
+              Use Existing
+            </Button>
+            <Button
+              size="xs"
               variant="destructive"
               onClick={() => {
                 ws.send(JSON.stringify({ type: "wipe" }));
