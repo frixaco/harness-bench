@@ -15,7 +15,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [conn, setConn] = useState<WebSocket | null>(null);
   const setupToastIdRef = useRef<string | number | null>(null);
   const wipeToastIdRef = useRef<string | number | null>(null);
-  const setSetupRepoUrl = useDashboardStore((state) => state.setSetupRepoUrl);
 
   useEffect(() => {
     let retry = 0;
@@ -69,7 +68,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         if (payload?.type === "setup-status") {
           const isUseExisting = payload.mode === "existing";
           if (payload.status === "start") {
-            setSetupRepoUrl(null);
+            setActiveRepoUrl(null);
             setupToastIdRef.current = toast.loading(
               isUseExisting
                 ? "Loading existing worktrees..."
@@ -81,7 +80,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             return;
           }
           if (payload.status === "success") {
-            setSetupRepoUrl(
+            setActiveRepoUrl(
               typeof payload.repoUrl === "string"
                 ? payload.repoUrl.trim()
                 : null,
@@ -96,7 +95,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             return;
           }
           if (payload.status === "error") {
-            setSetupRepoUrl(null);
+            setActiveRepoUrl(null);
             toast.error(
               isUseExisting ? "Use Existing failed" : "Setup failed",
               {
@@ -109,12 +108,12 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
         if (payload?.type === "wipe-status") {
           if (payload.status === "start") {
-            setSetupRepoUrl(null);
+            setActiveRepoUrl(null);
             wipeToastIdRef.current = toast.loading("Wiping ~/.hbench...");
             return;
           }
           if (payload.status === "success") {
-            setSetupRepoUrl(null);
+            setActiveRepoUrl(null);
             toast.success("Sandbox wiped", {
               id: wipeToastIdRef.current ?? undefined,
             });
@@ -136,11 +135,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     return () => {
       conn.removeEventListener("message", handleStatus);
     };
-  }, [conn, setSetupRepoUrl]);
+  }, [conn]);
 
   return <WebSocketContext value={conn}>{children}</WebSocketContext>;
 }
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useDashboardStore } from "./store";
+import { setActiveRepoUrl } from "./store";

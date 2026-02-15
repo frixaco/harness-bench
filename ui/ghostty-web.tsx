@@ -1,18 +1,18 @@
 export function Dashboard() {
   const ws = useWS();
-  const { repoUrl, runRequested } = useDashboardState();
-  const { setRepoUrl, launchAgent: markAgentLaunched } = useDashboardActions();
+  const repoUrlInput = useDashboardStore(selectRepoUrlInput);
+  const runRequested = useDashboardStore(selectRunRequested);
 
-  const trimmedRepoUrl = useDashboardStore(selectTrimmedRepoUrl);
-  const isRepoSetup = useDashboardStore(selectIsRepoSetup);
+  const trimmedRepoUrlInput = useDashboardStore(selectTrimmedRepoUrlInput);
+  const isRepoReady = useDashboardStore(selectIsRepoReady);
   const launchedAgentCount = useDashboardStore(selectLaunchedAgentCount);
 
-  const launchAgent = useCallback(
+  const handleLaunchAgent = useCallback(
     (agent: string) => {
       ws.send(agent);
-      markAgentLaunched(agent);
+      launchAgent(agent);
     },
-    [markAgentLaunched, ws],
+    [ws],
   );
 
   return (
@@ -25,19 +25,19 @@ export function Dashboard() {
 
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <Input
-              value={repoUrl}
-              onChange={(e) => setRepoUrl(e.currentTarget.value)}
+              value={repoUrlInput}
+              onChange={(e) => setRepoUrlInput(e.currentTarget.value)}
               placeholder="https://github.com/org/repo"
               className="h-7 max-w-sm font-mono text-xs"
             />
             <Button
               size="xs"
-              disabled={trimmedRepoUrl.length === 0}
+              disabled={trimmedRepoUrlInput.length === 0}
               onClick={() => {
                 ws.send(
                   JSON.stringify({
                     type: "setup",
-                    repoUrl: trimmedRepoUrl,
+                    repoUrl: trimmedRepoUrlInput,
                   }),
                 );
               }}
@@ -47,12 +47,12 @@ export function Dashboard() {
             <Button
               size="xs"
               variant="outline"
-              disabled={trimmedRepoUrl.length === 0}
+              disabled={trimmedRepoUrlInput.length === 0}
               onClick={() => {
                 ws.send(
                   JSON.stringify({
                     type: "use-existing",
-                    repoUrl: trimmedRepoUrl,
+                    repoUrl: trimmedRepoUrlInput,
                   }),
                 );
               }}
@@ -84,10 +84,10 @@ export function Dashboard() {
               <span
                 className={cn(
                   "size-1.5 rounded-full",
-                  isRepoSetup ? "bg-emerald-500" : "bg-muted-foreground/50",
+                  isRepoReady ? "bg-emerald-500" : "bg-muted-foreground/50",
                 )}
               />
-              {isRepoSetup ? "ready" : "no repo"}
+              {isRepoReady ? "ready" : "no repo"}
             </span>
           </div>
 
@@ -106,9 +106,9 @@ export function Dashboard() {
               key={agent}
               name={agent}
               runRequested={runRequested[agent] ?? false}
-              repoReady={isRepoSetup}
-              repoUrl={trimmedRepoUrl}
-              onLaunch={() => launchAgent(agent)}
+              repoReady={isRepoReady}
+              repoUrl={trimmedRepoUrlInput}
+              onLaunch={() => handleLaunchAgent(agent)}
             />
           ))}
         </div>
@@ -125,11 +125,13 @@ import { useWS } from "./lib/websocket";
 import { cn } from "./lib/utils";
 import {
   agents,
-  selectIsRepoSetup,
+  launchAgent,
+  selectIsRepoReady,
+  selectRunRequested,
   selectLaunchedAgentCount,
-  selectTrimmedRepoUrl,
-  useDashboardActions,
-  useDashboardState,
+  selectRepoUrlInput,
+  selectTrimmedRepoUrlInput,
+  setRepoUrlInput,
   useDashboardStore,
 } from "./lib/store";
 import { TUI } from "./components/tui";

@@ -1,16 +1,18 @@
+type TUIProps = {
+  name: string;
+  runRequested: boolean;
+  repoReady: boolean;
+  repoUrl: string;
+  onLaunch: () => void;
+};
+
 export function TUI({
   name,
   runRequested,
   repoReady,
   repoUrl,
   onLaunch,
-}: {
-  name: string;
-  runRequested: boolean;
-  repoReady: boolean;
-  repoUrl: string;
-  onLaunch: () => void;
-}) {
+}: TUIProps) {
   const ws = useWS();
   const termDivContainer = useRef<HTMLDivElement | null>(null);
   const termInstance = useRef<Terminal | null>(null);

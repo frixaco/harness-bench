@@ -4,23 +4,11 @@ type RunRequestedState = Record<string, boolean>;
 
 type DashboardState = {
   prompt: string;
-  repoUrl: string;
-  setupRepoUrl: string | null;
+  repoUrlInput: string;
+  activeRepoUrl: string | null;
   runRequested: RunRequestedState;
-  stopping: boolean;
+  isStoppingAgents: boolean;
 };
-
-type DashboardActions = {
-  setPrompt: (prompt: string) => void;
-  setRepoUrl: (repoUrl: string) => void;
-  setSetupRepoUrl: (setupRepoUrl: string | null) => void;
-  setStopping: (stopping: boolean) => void;
-  launchAgent: (agent: string) => void;
-  launchAllAgents: () => void;
-  resetRunRequested: () => void;
-};
-
-type DashboardStore = DashboardState & DashboardActions;
 
 const createRequestedState = (requested: boolean): RunRequestedState =>
   agents.reduce((acc, agent) => {
@@ -31,65 +19,72 @@ const createRequestedState = (requested: boolean): RunRequestedState =>
 export const createRunRequestedState = () => createRequestedState(false);
 export const createLaunchedRequestedState = () => createRequestedState(true);
 
-export const useDashboardStore = create<DashboardStore>()((set) => ({
+export const useDashboardStore = create<DashboardState>()(() => ({
   prompt: "",
-  repoUrl: "",
-  setupRepoUrl: null,
+  repoUrlInput: "",
+  activeRepoUrl: null,
   runRequested: createRunRequestedState(),
-  stopping: false,
-  setPrompt: (prompt) => set({ prompt }),
-  setRepoUrl: (repoUrl) => set({ repoUrl }),
-  setSetupRepoUrl: (setupRepoUrl) => set({ setupRepoUrl }),
-  setStopping: (stopping) => set({ stopping }),
-  launchAgent: (agent) =>
-    set((state) => ({
-      runRequested: {
-        ...state.runRequested,
-        [agent]: true,
-      },
-    })),
-  launchAllAgents: () => set({ runRequested: createLaunchedRequestedState() }),
-  resetRunRequested: () => set({ runRequested: createRunRequestedState() }),
+  isStoppingAgents: false,
 }));
 
-const selectDashboardState = (state: DashboardStore) => ({
-  prompt: state.prompt,
-  repoUrl: state.repoUrl,
-  setupRepoUrl: state.setupRepoUrl,
-  runRequested: state.runRequested,
-  stopping: state.stopping,
-});
-
-const selectDashboardActions = (state: DashboardStore) => ({
-  setPrompt: state.setPrompt,
-  setRepoUrl: state.setRepoUrl,
-  setSetupRepoUrl: state.setSetupRepoUrl,
-  setStopping: state.setStopping,
-  launchAgent: state.launchAgent,
-  launchAllAgents: state.launchAllAgents,
-  resetRunRequested: state.resetRunRequested,
-});
-
-export const useDashboardState = () =>
-  useDashboardStore(useShallow(selectDashboardState));
-
-export const useDashboardActions = () =>
-  useDashboardStore(useShallow(selectDashboardActions));
-
-export const selectTrimmedRepoUrl = (state: DashboardStore) =>
-  state.repoUrl.trim();
-
-export const selectTrimmedPrompt = (state: DashboardStore) =>
-  state.prompt.trim();
-
-export const selectIsRepoSetup = (state: DashboardStore) => {
-  const trimmedRepoUrl = state.repoUrl.trim();
-  return trimmedRepoUrl.length > 0 && state.setupRepoUrl === trimmedRepoUrl;
+export const setPrompt = (prompt: string) => {
+  useDashboardStore.setState({ prompt });
 };
 
-export const selectLaunchedAgentCount = (state: DashboardStore) =>
+export const setRepoUrlInput = (repoUrlInput: string) => {
+  useDashboardStore.setState({ repoUrlInput });
+};
+
+export const setActiveRepoUrl = (activeRepoUrl: string | null) => {
+  useDashboardStore.setState({ activeRepoUrl });
+};
+
+export const setIsStoppingAgents = (isStoppingAgents: boolean) => {
+  useDashboardStore.setState({ isStoppingAgents });
+};
+
+export const launchAgent = (agent: string) => {
+  useDashboardStore.setState((state) => ({
+    runRequested: {
+      ...state.runRequested,
+      [agent]: true,
+    },
+  }));
+};
+
+export const launchAllAgents = () => {
+  useDashboardStore.setState({ runRequested: createLaunchedRequestedState() });
+};
+
+export const resetRunRequested = () => {
+  useDashboardStore.setState({ runRequested: createRunRequestedState() });
+};
+
+export const selectPrompt = (state: DashboardState) => state.prompt;
+
+export const selectRepoUrlInput = (state: DashboardState) => state.repoUrlInput;
+
+export const selectRunRequested = (state: DashboardState) => state.runRequested;
+
+export const selectIsStoppingAgents = (state: DashboardState) =>
+  state.isStoppingAgents;
+
+export const selectTrimmedRepoUrlInput = (state: DashboardState) =>
+  state.repoUrlInput.trim();
+
+export const selectTrimmedPrompt = (state: DashboardState) =>
+  state.prompt.trim();
+
+export const selectIsRepoReady = (state: DashboardState) => {
+  const trimmedRepoUrlInput = state.repoUrlInput.trim();
+  return (
+    trimmedRepoUrlInput.length > 0 &&
+    state.activeRepoUrl === trimmedRepoUrlInput
+  );
+};
+
+export const selectLaunchedAgentCount = (state: DashboardState) =>
   Object.values(state.runRequested).filter(Boolean).length;
 
 import { create } from "zustand";
-import { useShallow } from "zustand/react/shallow";
 import modelsJson from "./models.json";

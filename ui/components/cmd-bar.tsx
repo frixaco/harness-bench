@@ -1,21 +1,16 @@
 export function CommandBar() {
   const ws = useWS();
-  const trimmedRepoUrl = useDashboardStore(selectTrimmedRepoUrl);
-  const isRepoSetup = useDashboardStore(selectIsRepoSetup);
+  const trimmedRepoUrlInput = useDashboardStore(selectTrimmedRepoUrlInput);
+  const isRepoReady = useDashboardStore(selectIsRepoReady);
   const launchedAgentCount = useDashboardStore(selectLaunchedAgentCount);
-  const { prompt, stopping } = useDashboardState();
-  const {
-    setPrompt,
-    setStopping,
-    launchAllAgents: markAllAgentsLaunched,
-    resetRunRequested,
-  } = useDashboardActions();
+  const prompt = useDashboardStore(selectPrompt);
+  const isStoppingAgents = useDashboardStore(selectIsStoppingAgents);
   const trimmedPrompt = useDashboardStore(selectTrimmedPrompt);
 
-  const launchAllAgents = useCallback(() => {
+  const handleLaunchAllAgents = useCallback(() => {
     agents.forEach((agent) => ws.send(agent));
-    markAllAgentsLaunched();
-  }, [markAllAgentsLaunched, ws]);
+    launchAllAgents();
+  }, [ws]);
 
   const runPromptOnAllAgents = useCallback(() => {
     if (!trimmedPrompt) return;
@@ -41,8 +36,8 @@ export function CommandBar() {
   }, [trimmedPrompt, ws]);
 
   const stopAllAgents = useCallback(async () => {
-    if (stopping) return;
-    setStopping(true);
+    if (isStoppingAgents) return;
+    setIsStoppingAgents(true);
     try {
       const response = await fetch("/api/stop", {
         method: "POST",
@@ -57,9 +52,9 @@ export function CommandBar() {
       toast.error("Stop failed", { description: message });
     } finally {
       resetRunRequested();
-      setStopping(false);
+      setIsStoppingAgents(false);
     }
-  }, [resetRunRequested, setStopping, stopping]);
+  }, [isStoppingAgents]);
 
   return (
     <div className="sticky top-11 z-20 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
@@ -78,7 +73,7 @@ export function CommandBar() {
         />
         <Button
           size="xs"
-          disabled={!isRepoSetup || trimmedPrompt.length === 0}
+          disabled={!isRepoReady || trimmedPrompt.length === 0}
           onClick={runPromptOnAllAgents}
         >
           <Send /> Send
@@ -89,15 +84,15 @@ export function CommandBar() {
         <Button
           size="xs"
           variant="outline"
-          disabled={!isRepoSetup}
-          onClick={launchAllAgents}
+          disabled={!isRepoReady}
+          onClick={handleLaunchAllAgents}
         >
           <Play /> All
         </Button>
         <Button
           size="xs"
           variant="destructive"
-          disabled={stopping || launchedAgentCount === 0}
+          disabled={isStoppingAgents || launchedAgentCount === 0}
           onClick={() => void stopAllAgents()}
         >
           <Square /> Stop
@@ -105,7 +100,7 @@ export function CommandBar() {
 
         <div className="mx-1 h-4 w-px bg-border" />
 
-        <ReviewSheet repoReady={isRepoSetup} repoUrl={trimmedRepoUrl} />
+        <ReviewSheet repoReady={isRepoReady} repoUrl={trimmedRepoUrlInput} />
       </div>
     </div>
   );
@@ -118,12 +113,16 @@ import { Button } from "./button";
 import { ReviewSheet } from "./review-sheet";
 import {
   agents,
-  selectIsRepoSetup,
+  launchAllAgents,
+  resetRunRequested,
+  selectIsRepoReady,
+  selectIsStoppingAgents,
+  selectPrompt,
   selectLaunchedAgentCount,
   selectTrimmedPrompt,
-  selectTrimmedRepoUrl,
-  useDashboardActions,
-  useDashboardState,
+  selectTrimmedRepoUrlInput,
+  setIsStoppingAgents,
+  setPrompt,
   useDashboardStore,
 } from "@/lib/store";
 import { useWS } from "@/lib/websocket";
