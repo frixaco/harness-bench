@@ -100,7 +100,10 @@ export function CommandBar() {
 
         <div className="mx-1 h-4 w-px bg-border" />
 
-        <ReviewSheet repoReady={isRepoReady} repoUrl={trimmedRepoUrlInput} />
+        <ReviewSheet
+          isRepoReady={isRepoReady}
+          repoUrlInput={trimmedRepoUrlInput}
+        />
       </div>
     </div>
   );

@@ -75,10 +75,10 @@ export function Dashboard() {
               <span
                 className={cn(
                   "size-1.5 rounded-full",
-                  ws.ready ? "bg-emerald-500" : "bg-red-400",
+                  ws.isReady ? "bg-emerald-500" : "bg-red-400",
                 )}
               />
-              {ws.ready ? "ws" : "offline"}
+              {ws.isReady ? "ws" : "offline"}
             </span>
             <span className="flex items-center gap-1.5">
               <span
@@ -106,8 +106,8 @@ export function Dashboard() {
               key={agent}
               name={agent}
               runRequested={runRequested[agent] ?? false}
-              repoReady={isRepoReady}
-              repoUrl={trimmedRepoUrlInput}
+              isRepoReady={isRepoReady}
+              repoUrlInput={trimmedRepoUrlInput}
               onLaunch={() => handleLaunchAgent(agent)}
             />
           ))}

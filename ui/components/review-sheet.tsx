@@ -1,9 +1,9 @@
 export function ReviewSheet({
-  repoReady,
-  repoUrl,
+  isRepoReady,
+  repoUrlInput,
 }: {
-  repoReady: boolean;
-  repoUrl: string;
+  isRepoReady: boolean;
+  repoUrlInput: string;
 }) {
   const [open, setOpen] = useState(false);
   const [collectingDiffs, setCollectingDiffs] = useState(false);
@@ -72,22 +72,21 @@ export function ReviewSheet({
     setCompletion("");
 
     try {
+      const requestIdSeed = Date.now();
       const diffResults = await Promise.all(
         agents.map(async (agent, index) => {
-          const search = new URLSearchParams({
-            agent,
-            t: `${Date.now()}-${index}`,
-          });
-          if (repoUrl) {
-            search.set("repoUrl", repoUrl);
-          }
-
-          const response = await fetch(`/api/diff?${search.toString()}`, {
-            signal: controller.signal,
-          });
-          const body = await response.text();
-          if (!response.ok) {
-            throw new Error(`${agent}: ${body || "Failed to load diff"}`);
+          let body: string;
+          try {
+            body = await fetchAgentDiff({
+              agent,
+              repoUrlInput,
+              signal: controller.signal,
+              requestId: `${requestIdSeed}-${index}`,
+            });
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "Failed to load diff";
+            throw new Error(`${agent}: ${message}`, { cause: error });
           }
 
           return {
@@ -113,12 +112,15 @@ export function ReviewSheet({
       }
 
       setCollectingDiffs(false);
-      const output = await complete(buildReviewPrompt({ repoUrl, diffs }), {
-        body: {
-          model: selectedModel.id,
-          apiKey: reviewApiKey.trim() || undefined,
+      const output = await complete(
+        buildReviewPrompt({ repoUrl: repoUrlInput, diffs }),
+        {
+          body: {
+            model: selectedModel.id,
+            apiKey: reviewApiKey.trim() || undefined,
+          },
         },
-      });
+      );
 
       if (
         !controller.signal.aborted &&
@@ -148,7 +150,7 @@ export function ReviewSheet({
   }, [
     abortDiffCollection,
     complete,
-    repoUrl,
+    repoUrlInput,
     reviewApiKey,
     reviewModel,
     setCompletion,
@@ -173,7 +175,7 @@ export function ReviewSheet({
           <Button
             size="xs"
             variant="outline"
-            disabled={!repoReady || loading}
+            disabled={!isRepoReady || loading}
           />
         }
       >
@@ -254,5 +256,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./select";
+import { fetchAgentDiff } from "@/lib/diff-client";
 import { agents } from "@/lib/store";
 import { buildReviewPrompt, reviewModelOptions } from "@/lib/reviewer";

@@ -122,6 +122,7 @@ export const handleReviewPost = async (req: Request) => {
     const result = streamText({
       model: openrouter(payload.model),
       prompt: payload.prompt,
+      providerOptions: { openrouter: { reasoning: { effort: "none" } } },
       maxRetries: 1,
       onFinish({ finishReason, usage }) {
         logReviewApi(requestId, "review stream finished", {

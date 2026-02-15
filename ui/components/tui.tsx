@@ -1,16 +1,16 @@
 type TUIProps = {
   name: string;
   runRequested: boolean;
-  repoReady: boolean;
-  repoUrl: string;
+  isRepoReady: boolean;
+  repoUrlInput: string;
   onLaunch: () => void;
 };
 
 export function TUI({
   name,
   runRequested,
-  repoReady,
-  repoUrl,
+  isRepoReady,
+  repoUrlInput,
   onLaunch,
 }: TUIProps) {
   const ws = useWS();
@@ -20,7 +20,7 @@ export function TUI({
   const [diffPatch, setDiffPatch] = useState<string | null>(null);
   const [diffError, setDiffError] = useState<string | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
-  const [diffRepoUrl, setDiffRepoUrl] = useState<string | null>(null);
+  const [diffRepoUrlInput, setDiffRepoUrlInput] = useState<string | null>(null);
   const headerPattern = getAgentPattern(name.toLowerCase());
 
   useEffect(() => {
@@ -90,7 +90,7 @@ export function TUI({
     };
 
     const sendResize = (cols: number, rows: number) => {
-      if (!ws.conn || !ws.ready) return;
+      if (!ws.socket || !ws.isReady) return;
       ws.send(
         JSON.stringify({
           type: "resize",
@@ -154,8 +154,8 @@ export function TUI({
 
     async function ensureSocketAttached() {
       await ensureTerminalSetup();
-      if (!active || !ws.conn || !termInstance.current) return;
-      attachSocket(ws.conn, termInstance.current);
+      if (!active || !ws.socket || !termInstance.current) return;
+      attachSocket(ws.socket, termInstance.current);
 
       resizeDisposable = termInstance.current.onResize((size) => {
         sendResize(size.cols, size.rows);
@@ -175,26 +175,19 @@ export function TUI({
       termInstance.current?.dispose();
       termInstance.current = null;
     };
-  }, [runRequested, ws.conn]);
+  }, [runRequested, ws.socket]);
 
   const fetchDiff = useCallback(
-    async (repoUrlOverride?: string) => {
+    async (repoUrlInputOverride?: string) => {
       setDiffLoading(true);
       setDiffError(null);
       try {
-        const repoUrlParam = repoUrlOverride ?? diffRepoUrl ?? repoUrl;
-        const search = new URLSearchParams({
+        const nextRepoUrlInput =
+          repoUrlInputOverride ?? diffRepoUrlInput ?? repoUrlInput;
+        const body = await fetchAgentDiff({
           agent: name,
-          t: Date.now().toString(),
+          repoUrlInput: nextRepoUrlInput,
         });
-        if (repoUrlParam) {
-          search.set("repoUrl", repoUrlParam);
-        }
-        const response = await fetch(`/api/diff?${search.toString()}`);
-        const body = await response.text();
-        if (!response.ok) {
-          throw new Error(body || "Failed to load diff");
-        }
         const trimmed = body.trim();
         setDiffPatch(trimmed.length > 0 ? body : null);
       } catch (error) {
@@ -206,7 +199,7 @@ export function TUI({
         setDiffLoading(false);
       }
     },
-    [diffRepoUrl, name, repoUrl],
+    [diffRepoUrlInput, name, repoUrlInput],
   );
 
   return (
@@ -231,7 +224,7 @@ export function TUI({
         <Button
           size="icon-xs"
           variant={runRequested ? "secondary" : "ghost"}
-          disabled={!repoReady}
+          disabled={!isRepoReady}
           onClick={onLaunch}
           className={cn(
             "text-white/60 hover:text-white",
@@ -247,8 +240,8 @@ export function TUI({
           onOpenChange={(open) => {
             setDiffOpen(open);
             if (open) {
-              setDiffRepoUrl(repoUrl);
-              fetchDiff(repoUrl);
+              setDiffRepoUrlInput(repoUrlInput);
+              fetchDiff(repoUrlInput);
             }
           }}
         >
@@ -258,13 +251,13 @@ export function TUI({
                 size="icon-xs"
                 variant="ghost"
                 className="text-white/60 hover:text-white"
-                disabled={!repoReady}
+                disabled={!isRepoReady}
                 onClick={() => {
                   if (!diffOpen) {
                     setDiffOpen(true);
                   }
-                  setDiffRepoUrl(repoUrl);
-                  fetchDiff(repoUrl);
+                  setDiffRepoUrlInput(repoUrlInput);
+                  fetchDiff(repoUrlInput);
                 }}
               />
             }
@@ -307,6 +300,7 @@ import { Terminal, init } from "ghostty-web";
 import { Columns2, Play, RefreshCcw } from "lucide-react";
 import { Button } from "./button";
 import { getAgentPattern } from "@/lib/agent-patterns";
+import { fetchAgentDiff } from "@/lib/diff-client";
 import { useWS } from "@/lib/websocket";
 import {
   Sheet,

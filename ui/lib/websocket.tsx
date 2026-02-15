@@ -1,13 +1,12 @@
 const WebSocketContext = createContext<WebSocket | null>(null);
 
 export function useWS() {
-  const conn = useContext(WebSocketContext);
+  const socket = useContext(WebSocketContext);
 
   return {
-    ready: conn?.readyState == WebSocket.OPEN,
-    conn,
-    error: null,
-    send: (msg: string) => conn?.send(msg),
+    isReady: socket?.readyState == WebSocket.OPEN,
+    socket,
+    send: (msg: string) => socket?.send(msg),
   };
 }
 
