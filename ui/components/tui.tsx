@@ -4,6 +4,7 @@ type TUIProps = {
   isRepoReady: boolean;
   repoUrlInput: string;
   onLaunch: () => void;
+  diffEnabled?: boolean;
 };
 
 export function TUI({
@@ -12,6 +13,7 @@ export function TUI({
   isRepoReady,
   repoUrlInput,
   onLaunch,
+  diffEnabled = true,
 }: TUIProps) {
   const ws = useWS();
   const termDivContainer = useRef<HTMLDivElement | null>(null);
@@ -235,51 +237,53 @@ export function TUI({
           {runRequested ? <RefreshCcw className="animate-spin" /> : <Play />}
         </Button>
 
-        <Sheet
-          open={diffOpen}
-          onOpenChange={(open) => {
-            setDiffOpen(open);
-            if (open) {
-              setDiffRepoUrlInput(repoUrlInput);
-              fetchDiff(repoUrlInput);
-            }
-          }}
-        >
-          <SheetTrigger
-            render={
-              <Button
-                size="icon-xs"
-                variant="ghost"
-                className="text-white/60 hover:text-white"
-                disabled={!isRepoReady}
-                onClick={() => {
-                  if (!diffOpen) {
-                    setDiffOpen(true);
-                  }
-                  setDiffRepoUrlInput(repoUrlInput);
-                  fetchDiff(repoUrlInput);
-                }}
-              />
-            }
+        {diffEnabled && (
+          <Sheet
+            open={diffOpen}
+            onOpenChange={(open) => {
+              setDiffOpen(open);
+              if (open) {
+                setDiffRepoUrlInput(repoUrlInput);
+                fetchDiff(repoUrlInput);
+              }
+            }}
           >
-            <Columns2 />
-          </SheetTrigger>
-          <SheetContent
-            side="right"
-            className="data-[side=right]:w-[96vw] data-[side=right]:sm:max-w-[92vw]"
-          >
-            <SheetHeader>
-              <SheetTitle className="capitalize">{name} — Diff</SheetTitle>
-            </SheetHeader>
-            <div className="flex-1 overflow-auto p-4">
-              <DiffView
-                loading={diffLoading}
-                error={diffError}
-                patch={diffPatch}
-              />
-            </div>
-          </SheetContent>
-        </Sheet>
+            <SheetTrigger
+              render={
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  className="text-white/60 hover:text-white"
+                  disabled={!isRepoReady}
+                  onClick={() => {
+                    if (!diffOpen) {
+                      setDiffOpen(true);
+                    }
+                    setDiffRepoUrlInput(repoUrlInput);
+                    fetchDiff(repoUrlInput);
+                  }}
+                />
+              }
+            >
+              <Columns2 />
+            </SheetTrigger>
+            <SheetContent
+              side="right"
+              className="data-[side=right]:w-[96vw] data-[side=right]:sm:max-w-[92vw]"
+            >
+              <SheetHeader>
+                <SheetTitle className="capitalize">{name} — Diff</SheetTitle>
+              </SheetHeader>
+              <div className="flex-1 overflow-auto p-4">
+                <DiffView
+                  loading={diffLoading}
+                  error={diffError}
+                  patch={diffPatch}
+                />
+              </div>
+            </SheetContent>
+          </Sheet>
+        )}
       </div>
 
       {/* Terminal area */}

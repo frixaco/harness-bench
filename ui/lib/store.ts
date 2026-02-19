@@ -1,4 +1,6 @@
 export const agents = Object.keys(modelsJson as Record<string, unknown>);
+export const debugTerminalId = "debug";
+export const terminalSessions = [...agents, debugTerminalId];
 
 type RunRequestedState = Record<string, boolean>;
 
@@ -10,14 +12,20 @@ type DashboardState = {
   isStoppingAgents: boolean;
 };
 
-const createRequestedState = (requested: boolean): RunRequestedState =>
-  agents.reduce((acc, agent) => {
+const createRequestedState = (
+  keys: string[],
+  requested: boolean,
+): RunRequestedState =>
+  keys.reduce((acc, agent) => {
     acc[agent] = requested;
     return acc;
   }, {} as RunRequestedState);
 
-export const createRunRequestedState = () => createRequestedState(false);
-export const createLaunchedRequestedState = () => createRequestedState(true);
+const createAgentRequestedState = (requested: boolean) =>
+  createRequestedState(agents, requested);
+
+export const createRunRequestedState = () =>
+  createRequestedState(terminalSessions, false);
 
 export const useDashboardStore = create<DashboardState>()(() => ({
   prompt: "",
@@ -53,7 +61,12 @@ export const launchAgent = (agent: string) => {
 };
 
 export const launchAllAgents = () => {
-  useDashboardStore.setState({ runRequested: createLaunchedRequestedState() });
+  useDashboardStore.setState((state) => ({
+    runRequested: {
+      ...state.runRequested,
+      ...createAgentRequestedState(true),
+    },
+  }));
 };
 
 export const resetRunRequested = () => {
@@ -84,7 +97,16 @@ export const selectIsRepoReady = (state: DashboardState) => {
 };
 
 export const selectLaunchedAgentCount = (state: DashboardState) =>
-  Object.values(state.runRequested).filter(Boolean).length;
+  agents.reduce(
+    (count, agent) => count + (state.runRequested[agent] ? 1 : 0),
+    0,
+  );
+
+export const selectLaunchedTerminalCount = (state: DashboardState) =>
+  terminalSessions.reduce(
+    (count, terminal) => count + (state.runRequested[terminal] ? 1 : 0),
+    0,
+  );
 
 import { create } from "zustand";
 import modelsJson from "./models.json";

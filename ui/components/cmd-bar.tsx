@@ -2,7 +2,7 @@ export function CommandBar() {
   const ws = useWS();
   const trimmedRepoUrlInput = useDashboardStore(selectTrimmedRepoUrlInput);
   const isRepoReady = useDashboardStore(selectIsRepoReady);
-  const launchedAgentCount = useDashboardStore(selectLaunchedAgentCount);
+  const launchedTerminalCount = useDashboardStore(selectLaunchedTerminalCount);
   const prompt = useDashboardStore(selectPrompt);
   const isStoppingAgents = useDashboardStore(selectIsStoppingAgents);
   const trimmedPrompt = useDashboardStore(selectTrimmedPrompt);
@@ -92,7 +92,7 @@ export function CommandBar() {
         <Button
           size="xs"
           variant="destructive"
-          disabled={isStoppingAgents || launchedAgentCount === 0}
+          disabled={isStoppingAgents || launchedTerminalCount === 0}
           onClick={() => void stopAllAgents()}
         >
           <Square /> Stop
@@ -120,8 +120,8 @@ import {
   resetRunRequested,
   selectIsRepoReady,
   selectIsStoppingAgents,
+  selectLaunchedTerminalCount,
   selectPrompt,
-  selectLaunchedAgentCount,
   selectTrimmedPrompt,
   selectTrimmedRepoUrlInput,
   setIsStoppingAgents,

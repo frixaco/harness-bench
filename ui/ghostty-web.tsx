@@ -101,6 +101,15 @@ export function Dashboard() {
 
       <div className="flex-1 px-3 pt-3 pb-4">
         <div className="mx-auto grid max-w-480 gap-3 grid-cols-[repeat(auto-fit,minmax(420px,1fr))]">
+          <TUI
+            key={debugTerminalId}
+            name={debugTerminalId}
+            runRequested={runRequested[debugTerminalId] ?? false}
+            isRepoReady={true}
+            repoUrlInput={trimmedRepoUrlInput}
+            onLaunch={() => handleLaunchAgent(debugTerminalId)}
+            diffEnabled={false}
+          />
           {agents.map((agent) => (
             <TUI
               key={agent}
@@ -125,6 +134,7 @@ import { useWS } from "./lib/websocket";
 import { cn } from "./lib/utils";
 import {
   agents,
+  debugTerminalId,
   launchAgent,
   selectIsRepoReady,
   selectRunRequested,

@@ -2,6 +2,8 @@ const procs = new Map<string, Bun.Subprocess>();
 const agentWorktrees = new Map<string, string>();
 
 const agents = Object.keys(agentModeMapping);
+const debugTerminalId = "debug";
+const debugShellCommand = ["fish"];
 const defaultCols = 80;
 const defaultRows = 24;
 const sandboxRoot = path.join(os.homedir(), ".hbench");
@@ -18,6 +20,8 @@ const stopDelayMs = {
 let stopAllInFlight: Promise<void> | null = null;
 
 const agentBranchName = (agent: string) => `agent/${agent}`;
+const isTerminalSession = (name: string) =>
+  name === debugTerminalId || agents.includes(name);
 
 const server = Bun.serve({
   ...(portFromEnv ? { port: portFromEnv } : {}),
@@ -94,7 +98,7 @@ const server = Bun.serve({
       if (typeof message !== "string") return;
       const text = message;
 
-      if (agents.includes(text)) {
+      if (isTerminalSession(text)) {
         await initAgent();
         return;
       } else if (text.startsWith("{")) {
@@ -107,6 +111,15 @@ const server = Bun.serve({
 
       async function initAgent() {
         const agent = text;
+        if (agent === debugTerminalId) {
+          await stopAgentProcess(agent);
+          await spawnTerminal(agent, debugShellCommand, process.cwd(), {
+            missingCommandMessage:
+              "Failed to launch fish shell. Ensure fish is installed and available on PATH.\r\n",
+          });
+          return;
+        }
+
         const cwd = agentWorktrees.get(agent);
         if (!cwd) {
           console.warn("Missing worktree for agent", agent);
@@ -117,34 +130,8 @@ const server = Bun.serve({
           );
           return;
         }
-
         await stopAgentProcess(agent);
-
-        const proc = Bun.spawn([agent], {
-          cwd,
-          env: { ...process.env },
-          onExit(exitedProc, _exitCode, _signalCode, _error) {
-            if (procs.get(agent) === exitedProc) {
-              procs.delete(agent);
-            }
-          },
-          terminal: {
-            cols: defaultCols,
-            rows: defaultRows,
-            data(_terminal, data) {
-              const encoded = Buffer.from(data).toString("base64");
-              ws.send(
-                JSON.stringify({
-                  type: "output",
-                  agent,
-                  data: encoded,
-                }),
-              );
-            },
-          },
-        });
-
-        procs.set(agent, proc);
+        await spawnTerminal(agent, [agent], cwd);
       }
 
       async function runCommand() {
@@ -220,7 +207,7 @@ const server = Bun.serve({
           if (payload.type === "input") {
             const agent = payload.agent;
             if (!agent || typeof agent !== "string") return;
-            if (!agents.includes(agent)) return;
+            if (!isTerminalSession(agent)) return;
             if (typeof payload.data !== "string") return;
             procs.get(agent)?.terminal?.write(payload.data);
             return;
@@ -228,7 +215,7 @@ const server = Bun.serve({
           if (payload.type === "resize") {
             const agent = payload.agent;
             if (!agent || typeof agent !== "string") return;
-            if (!agents.includes(agent)) return;
+            if (!isTerminalSession(agent)) return;
             const cols = Math.trunc(Number(payload.cols));
             const rows = Math.trunc(Number(payload.rows));
             if (!Number.isSafeInteger(cols) || !Number.isSafeInteger(rows))
@@ -249,6 +236,54 @@ const server = Bun.serve({
           }
         } catch (error) {
           console.warn("Invalid message payload", error);
+        }
+      }
+
+      async function spawnTerminal(
+        agent: string,
+        command: string[],
+        cwd: string,
+        options: {
+          missingCommandMessage?: string;
+        } = {},
+      ) {
+        try {
+          const proc = Bun.spawn(command, {
+            cwd,
+            env: { ...process.env },
+            onExit(exitedProc, _exitCode, _signalCode, _error) {
+              if (procs.get(agent) === exitedProc) {
+                procs.delete(agent);
+              }
+            },
+            terminal: {
+              cols: defaultCols,
+              rows: defaultRows,
+              data(_terminal, data) {
+                const encoded = Buffer.from(data).toString("base64");
+                ws.send(
+                  JSON.stringify({
+                    type: "output",
+                    agent,
+                    data: encoded,
+                  }),
+                );
+              },
+            },
+          });
+
+          procs.set(agent, proc);
+        } catch (error) {
+          const message =
+            options.missingCommandMessage ??
+            "Failed to launch terminal process.\r\n";
+          sendAgentNotice(ws, agent, message);
+          console.warn("Failed to spawn terminal process", {
+            agent,
+            command,
+            cwd,
+            error,
+          });
         }
       }
     },
