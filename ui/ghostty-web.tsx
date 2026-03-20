@@ -70,27 +70,6 @@ export function Dashboard() {
             </Button>
           </div>
 
-          <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <span
-                className={cn(
-                  "size-1.5 rounded-full",
-                  ws.isReady ? "bg-emerald-500" : "bg-red-400",
-                )}
-              />
-              {ws.isReady ? "ws" : "offline"}
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span
-                className={cn(
-                  "size-1.5 rounded-full",
-                  isRepoReady ? "bg-emerald-500" : "bg-muted-foreground/50",
-                )}
-              />
-              {isRepoReady ? "ready" : "no repo"}
-            </span>
-          </div>
-
           <span className="text-xs tabular-nums text-muted-foreground">
             {launchedAgentCount}/{agents.length}
           </span>
