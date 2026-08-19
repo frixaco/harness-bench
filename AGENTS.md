@@ -6,7 +6,7 @@ Locally.
 
 ## Stack
 
-- Bun - WebSocket, REST API and runtime (do not use Node, npm, npx or Node APIs)
+- Bun runs the application and installs dependencies. npm is permitted only for registry checks and the trusted publish step.
 - Tailwind 4 + shadcn/base-ui
 - `ghostty-web` terminal renderer with optional `xtermjs` and `restty` versions
 - `@pierre/diffs` for patch rendering
@@ -33,3 +33,9 @@ Locally.
 - Root `tsconfig.json` is a references file (solution style), not a direct compile target
 - Typecheck via scripts: `bun run ts:ui` and `bun run ts:api`
 - TS path alias `@/*` resolves to `ui/*` first, then `lib/*`
+
+## Releasing
+
+- Follow the release procedure in [`README.md`](./README.md).
+- Publishing is tag-driven through `.github/workflows/release.yml` and npm trusted publishing.
+- Do not add an `NPM_TOKEN` secret or publish manually.

@@ -49,10 +49,44 @@ bun run dev
 
 ```bash
 bun run dev                     # UI + PTY + REST server
-bun run build                   # build fullstack server bundle into dist/
-bun run start                   # run dist bundle (production runtime)
-bun run lint                    # eslint
-bun run format                  # prettier
-bun run check                   # format + lint
-bun publish --access public     # publish new version
+bun run build                   # build full-stack server bundle into dist/
+bun run start                   # run the production dist bundle
+bun run lint                    # lint source files
+bun run ts:ui                   # type-check the UI
+bun run ts:api                  # type-check the server
+bun run format                  # format files in place
 ```
+
+## Releasing
+
+Publishing uses npm trusted publishing through `.github/workflows/release.yml`. The workflow does not use an `NPM_TOKEN` secret.
+
+1. Check the current npm version and choose a higher `X.Y.Z`:
+
+   ```bash
+   npm view @frixaco/hbench version
+   ```
+
+2. Update `version` in `package.json`.
+3. Verify the package:
+
+   ```bash
+   bun install --frozen-lockfile
+   bun run lint
+   bun run ts:ui
+   bun run ts:api
+   npm pack --dry-run
+   ```
+
+4. Commit the version change, create a matching tag, and push both:
+
+   ```bash
+   git add package.json
+   git commit -m "Release X.Y.Z"
+   git tag vX.Y.Z
+   git push --atomic origin main vX.Y.Z
+   ```
+
+The tag must point to the commit containing version `X.Y.Z`. A tag push runs the release workflow. npm rejects a version that already exists.
+
+The npm package must trust GitHub Actions for repository `frixaco/harness-bench`, workflow `release.yml`, with `npm publish` permission.
