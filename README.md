@@ -4,6 +4,10 @@ CLI agent benchmarker dashboard. Run multiple coding agents on the same task, wa
 
 https://github.com/user-attachments/assets/eb489f56-fbc7-4e8e-adb2-c232411303d2
 
+## TODO
+
+- [ ] Evaluate https://smolmachines.com/
+
 ## Highlights
 
 - Run `amp`, `opencode`, `claude`, `codex`, `pi`, `droid` in parallel
